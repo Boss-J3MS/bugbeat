@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugBeat — Sign Up</title>
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="auth.css" />
+</head>
+<body class="auth-page">
+
+  <div class="auth-visual">
+    <canvas id="auth-rain" class="auth-rain-bg" aria-hidden="true"></canvas>
+    <img src="bugbeatLogo-bg.png" alt="" class="auth-bg-logo auth-bg-logo--dark" aria-hidden="true" />
+    <img src="bugbeatLogo.png" alt="" class="auth-bg-logo auth-bg-logo--light" aria-hidden="true" />
+  </div>
+
+  <div class="auth-form-panel">
+    <button id="theme-toggle" class="cb-btn cb-btn--ghost auth-theme-toggle" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+
+    <div class="auth-card">
+      <h1 class="auth-title">Create account</h1>
+      <p class="auth-subtitle">Start finding errors through rhythm</p>
+
+      <div id="auth-error" class="auth-error" hidden></div>
+      <div id="auth-success" class="auth-success" hidden></div>
+
+      <div class="auth-form">
+        <div class="auth-field">
+          <label for="username">Username</label>
+          <input type="text" id="username" placeholder="your_username" autocomplete="username" />
+        </div>
+        <div class="auth-field">
+          <label for="email">Email</label>
+          <input type="email" id="email" placeholder="you@example.com" autocomplete="email" />
+        </div>
+        <div class="auth-field">
+          <label for="password">Password</label>
+          <div class="auth-field__input-wrap">
+            <input type="password" id="password" placeholder="At least 8 characters" autocomplete="new-password" />
+            <button type="button" class="auth-field__toggle-pw" data-target="password" aria-pressed="false" aria-label="Show password">Show</button>
+          </div>
+          <div class="auth-field__hint">Minimum 8 characters</div>
+        </div>
+        <div class="auth-field">
+          <label for="confirm">Confirm Password</label>
+          <div class="auth-field__input-wrap">
+            <input type="password" id="confirm" placeholder="Repeat your password" autocomplete="new-password" />
+            <button type="button" class="auth-field__toggle-pw" data-target="confirm" aria-pressed="false" aria-label="Show password">Show</button>
+          </div>
+        </div>
+        <button id="signup-btn" class="auth-btn">Create account</button>
+      </div>
+
+      <p class="auth-switch">
+        Already have an account? <a href="login.html">Log in</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const BACKEND_URL = 'http://localhost:3000';
+
+    // Redirect if already logged in
+    if (localStorage.getItem('cb_token')) {
+      window.location.href = 'index.html';
+    }
+
+    document.getElementById('signup-btn').addEventListener('click', async () => {
+      const username = document.getElementById('username').value.trim();
+      const email    = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const confirm  = document.getElementById('confirm').value;
+      const btn      = document.getElementById('signup-btn');
+      const errEl    = document.getElementById('auth-error');
+      const sucEl    = document.getElementById('auth-success');
+
+      errEl.hidden = true;
+      sucEl.hidden = true;
+
+      if (!username || !email || !password || !confirm) {
+        errEl.textContent = 'Please fill in all fields.';
+        errEl.hidden = false; return;
+      }
+      if (password.length < 8) {
+        errEl.textContent = 'Password must be at least 8 characters.';
+        errEl.hidden = false; return;
+      }
+      if (password !== confirm) {
+        errEl.textContent = 'Passwords do not match.';
+        errEl.hidden = false; return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = 'Creating account…';
+
+      try {
+        const res  = await fetch(`${BACKEND_URL}/auth/signup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Signup failed.');
+
+        localStorage.setItem('cb_token', data.token);
+        localStorage.setItem('cb_user',  JSON.stringify(data.user));
+
+        sucEl.textContent = `Account created! Welcome, ${data.user.username}! Redirecting…`;
+        sucEl.hidden = false;
+        setTimeout(() => window.location.href = 'index.html', 1200);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      } finally {
+        btn.disabled    = false;
+        btn.textContent = 'Create account';
+      }
+    });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('signup-btn').click();
+    });
+  </script>
+  <script src="theme.js"></script>
+  <script src="rain.js"></script>
+  <script src="pw-toggle.js"></script>
+
+</body>
+</html>

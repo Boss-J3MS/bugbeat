@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugBeat — Find Errors Through Rhythm</title>
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="history.css" />
+
+  <!-- Monaco Editor -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css" />
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="cb-header">
+    <div class="cb-header__logo">
+      <img src="bugbeatLogo.png" alt="BugBeat" class="cb-logo-img" />
+    </div>
+    <p class="cb-header__tagline">Finding Code &amp; Logic Errors Through Intelligent Rhythm</p>
+    <div class="cb-header__controls">
+      <div class="cb-music-search">
+        <input type="text" id="music-search" class="cb-input cb-input--search" placeholder="🎵 e.g. Hawak Mo Ang Beat, dark jazz, sad lofi…" autocomplete="off" spellcheck="false" />
+        <button id="music-search-btn" class="cb-btn cb-btn--ghost">🔍</button>
+        <span id="music-status" class="cb-music-status"></span>
+      </div>
+      <select id="lang-select" class="cb-select" aria-label="Programming language">
+        <option value="auto">Auto-detect</option>
+        <option value="javascript">JavaScript</option>
+        <option value="python">Python</option>
+        <option value="typescript">TypeScript</option>
+        <option value="java">Java</option>
+        <option value="cpp">C++</option>
+        <option value="rust">Rust</option>
+        <option value="go">Go</option>
+      </select>
+      <select id="demo-select" class="cb-select" aria-label="Load demo code">
+        <option value="">Load demo…</option>
+        <option value="clean">✅ Clean code</option>
+        <option value="warnings">⚠️ Minor warnings</option>
+        <option value="errors">🔴 Logic errors</option>
+        <option value="critical">💀 Critical issues</option>
+        <option value="mixed">🎲 Mixed (all severities)</option>
+      </select>
+      <div class="cb-audio-upload">
+        <label for="audio-upload" class="cb-btn cb-btn--ghost" title="Upload an MP3 or WAV as backing track">
+          🎧 <span id="audio-label">Upload audio</span>
+        </label>
+        <input type="file" id="audio-upload" accept="audio/*" hidden />
+        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
+      </div>
+      <button id="clear-btn" class="cb-btn cb-btn--ghost">Clear</button>
+
+      <!-- ✅ HISTORY BUTTON — added here -->
+      <button id="history-btn" class="cb-btn cb-btn--ghost" title="View analysis history">
+        ◈ History
+      </button>
+
+      <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
+        <span class="cb-btn__icon">▶</span> Analyze
+      </button>
+      <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+      <div class="cb-user-info" id="user-info">
+        <span id="user-greeting" class="cb-user-greeting"></span>
+        <div class="cb-notif" id="notif-wrap">
+          <button id="notif-btn" class="cb-btn cb-btn--ghost" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+            🔔<span id="notif-badge" class="cb-notif__badge" hidden>0</span>
+          </button>
+          <div id="notif-dropdown" class="cb-notif__dropdown" role="menu" aria-label="Notifications" hidden>
+            <div class="cb-notif__header">
+              <span>Notifications</span>
+              <button id="notif-mark-all" class="cb-notif__mark-all" type="button">Mark all read</button>
+            </div>
+            <div id="notif-list" class="cb-notif__list">
+              <div class="cb-notif__empty">No notifications yet.</div>
+            </div>
+          </div>
+        </div>
+        <button id="admin-link" type="button" class="cb-btn cb-btn--ghost" hidden>⚙ Admin</button>
+        <button id="logout-btn" class="cb-btn cb-btn--ghost">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ERROR BANNER -->
+  <div id="error-banner" class="cb-error-banner" role="alert" aria-live="assertive" hidden>
+    <span class="cb-error-banner__icon">⚠</span>
+    <span id="error-banner-msg"></span>
+  </div>
+
+  <!-- 2x2 PANEL LAYOUT -->
+  <main class="cb-workspace">
+
+    <!-- PANEL 1: Monaco Editor -->
+    <section class="cb-panel cb-panel--editor" aria-label="Code Input">
+      <div class="cb-panel__header">
+        <span class="cb-panel__title">Code</span>
+        <span id="line-count" class="cb-meta">0 lines</span>
+      </div>
+      <div id="monaco-editor" class="cb-monaco"></div>
+    </section>
+
+    <!-- PANEL 2: Issues -->
+    <section class="cb-panel cb-panel--issues" aria-label="Detected Issues">
+      <div class="cb-panel__header">
+        <span class="cb-panel__title">Issues</span>
+        <span id="issue-count" class="cb-badge">0</span>
+      </div>
+      <div id="ml-complexity" class="cb-ml" hidden>
+        <div class="cb-ml__row">
+          <span id="ml-risk-badge" class="cb-ml__badge">—</span>
+          <span id="ml-score" class="cb-ml__score"></span>
+          <span id="ml-lang" class="cb-ml__lang"></span>
+        </div>
+        <p id="ml-summary" class="cb-ml__summary"></p>
+      </div>
+      <div id="ml-complexity-unavailable" class="cb-ml cb-ml--unavailable" hidden>
+        ML complexity service unreachable — showing Gemini analysis only.
+      </div>
+      <div id="issue-list" class="cb-issue-list">
+        <div class="cb-empty-state">
+          <span class="cb-empty-state__icon">♪</span>
+          <span>Analyze code to detect issues</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANEL 3: Rhythm / Beat Grid -->
+    <section class="cb-panel cb-panel--sequencer" aria-label="Rhythm Pattern">
+      <div class="cb-panel__header">
+        <span class="cb-panel__title">Rhythm</span>
+        <div class="cb-legend">
+          <span class="cb-legend-item cb-legend-item--clean">Clean</span>
+          <span class="cb-legend-item cb-legend-item--warning">Warn</span>
+          <span class="cb-legend-item cb-legend-item--error">Error</span>
+          <span class="cb-legend-item cb-legend-item--critical">Crit</span>
+        </div>
+      </div>
+      <div id="sequencer" class="cb-sequencer" role="list" aria-label="Beat grid">
+        <div class="cb-empty-state">
+          <span class="cb-empty-state__icon">▶</span>
+          <span>Beats appear here after analysis</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANEL 4: Playback -->
+    <section class="cb-panel cb-panel--playback" aria-label="Playback Controls">
+      <div class="cb-panel__header">
+        <span class="cb-panel__title">Playback</span>
+      </div>
+      <div class="cb-playback">
+        <button id="play-btn" class="cb-btn cb-btn--play" aria-label="Play" disabled>▶</button>
+        <button id="stop-btn" class="cb-btn cb-btn--stop" aria-label="Stop" disabled>■</button>
+        <div class="cb-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <div id="progress-fill" class="cb-progress__fill"></div>
+        </div>
+        <span id="current-line" class="cb-meta">—</span>
+      </div>
+      <div class="cb-bpm-row">
+        <label class="cb-bpm-label" for="bpm-range">BPM</label>
+        <input type="range" id="bpm-range" class="cb-bpm-range" min="60" max="200" value="120" step="1" />
+        <span id="bpm-val" class="cb-bpm-val">120</span>
+      </div>
+      <div class="cb-stats" id="cb-stats">
+        <div class="cb-stat cb-stat--clean">
+          <span class="cb-stat__num" id="stat-clean">—</span>
+          <span class="cb-stat__label">Clean</span>
+        </div>
+        <div class="cb-stat cb-stat--warning">
+          <span class="cb-stat__num" id="stat-warning">—</span>
+          <span class="cb-stat__label">Warnings</span>
+        </div>
+        <div class="cb-stat cb-stat--error">
+          <span class="cb-stat__num" id="stat-error">—</span>
+          <span class="cb-stat__label">Errors</span>
+        </div>
+        <div class="cb-stat cb-stat--critical">
+          <span class="cb-stat__num" id="stat-critical">—</span>
+          <span class="cb-stat__label">Critical</span>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ═══════════════════════════════════════════
+       HISTORY PANEL — slide-over overlay
+  ═══════════════════════════════════════════ -->
+  <div id="history-panel" class="cb-history" role="dialog" aria-label="Analysis History" aria-modal="true">
+    <div class="cb-history__inner">
+
+      <!-- History header -->
+      <div class="cb-history__header">
+        <div class="cb-history__header-left">
+          <span class="cb-history__title">◈ History</span>
+          <span id="history-count" class="cb-badge">0 sessions</span>
+        </div>
+        <div class="cb-history__header-right">
+          <input type="text" id="history-search" class="cb-input cb-input--search cb-history__search"
+                 placeholder="Search language, risk…" autocomplete="off"/>
+          <div class="cb-history__filters">
+            <button class="cb-history-filter-btn active" onclick="setHistoryFilter('all', this)">All</button>
+            <button class="cb-history-filter-btn" onclick="setHistoryFilter('low', this)">Low</button>
+            <button class="cb-history-filter-btn" onclick="setHistoryFilter('medium', this)">Med</button>
+            <button class="cb-history-filter-btn" onclick="setHistoryFilter('high', this)">High</button>
+            <button class="cb-history-filter-btn" onclick="setHistoryFilter('critical', this)">Crit</button>
+          </div>
+          <button id="history-close-btn" class="cb-btn cb-btn--ghost" title="Close history">✕</button>
+        </div>
+      </div>
+
+      <!-- History body: list + detail -->
+      <div class="cb-history__body">
+
+        <!-- LEFT: Session list -->
+        <div class="cb-history__list-col">
+          <div id="history-list" class="cb-history__list"></div>
+          <div id="history-page-ctrl" class="cb-history__pagination"></div>
+        </div>
+
+        <!-- RIGHT: Session detail -->
+        <div class="cb-history__detail-col">
+
+          <!-- Empty state -->
+          <div id="history-empty" class="cb-history__detail-empty">
+            <span class="cb-history__detail-empty-icon">◈</span>
+            <span class="cb-history__detail-empty-hint">Select a session to view its full details</span>
+          </div>
+
+          <!-- Detail content -->
+          <div id="history-detail" class="cb-history__detail" hidden>
+
+            <!-- Detail header -->
+            <div class="cb-history__detail-header">
+              <span id="h-detail-title" class="cb-history__detail-title">—</span>
+              <button id="restore-session-btn" class="cb-btn cb-btn--accent">↗ Restore Session</button>
+            </div>
+
+            <!-- Meta cards -->
+            <div class="cb-history__meta-grid">
+              <div class="cb-history__meta-card">
+                <div class="cb-history__meta-label">Language</div>
+                <div class="cb-history__meta-val" id="h-meta-lang">—</div>
+              </div>
+              <div class="cb-history__meta-card">
+                <div class="cb-history__meta-label">Total lines</div>
+                <div class="cb-history__meta-val" id="h-meta-lines">—</div>
+              </div>
+              <div class="cb-history__meta-card">
+                <div class="cb-history__meta-label">Issues found</div>
+                <div class="cb-history__meta-val" id="h-meta-issues">—</div>
+              </div>
+              <div class="cb-history__meta-card">
+                <div class="cb-history__meta-label">Risk level</div>
+                <div class="cb-history__meta-val" id="h-meta-risk">—</div>
+              </div>
+            </div>
+
+            <!-- Fusion score bar -->
+            <div class="cb-history__fusion">
+              <div class="cb-history__fusion-label">
+                <span>ML Fusion Score</span>
+                <span id="h-fusion-score">—</span>
+              </div>
+              <div class="cb-history__fusion-track">
+                <div id="h-fusion-fill" class="cb-history__fusion-fill" style="width:0%"></div>
+              </div>
+              <div class="cb-history__fusion-ticks">
+                <span>0.00 Low</span>
+                <span>0.25</span>
+                <span>0.50 Med</span>
+                <span>0.75</span>
+                <span>1.00 Crit</span>
+              </div>
+            </div>
+
+            <!-- Issues list -->
+            <div class="cb-history__issues">
+              <div class="cb-history__issues-title">Detected Issues</div>
+              <div id="h-issues-list" class="cb-history__issues-list"></div>
+            </div>
+
+            <!-- Code snapshot -->
+            <div class="cb-history__code">
+              <div class="cb-history__code-label">Code Snapshot</div>
+              <pre id="h-code-block" class="cb-history__code-block"></pre>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Bottom stats bar -->
+      <div class="cb-history__footer">
+        <div class="cb-history__footer-stats">
+          <span class="cb-history__footer-stat">Total: <strong id="h-stat-total">0</strong></span>
+          <span class="cb-history__footer-stat">High risk: <strong id="h-stat-high" style="color:var(--error)">0</strong></span>
+          <span class="cb-history__footer-stat">Critical: <strong id="h-stat-crit" style="color:var(--critical)">0</strong></span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Tone.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+  <!-- Monaco Editor loader -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
+
+  <script>
+    require.config({
+      paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs' }
+    });
+  </script>
+
+  <script src="app.js"></script>
+  <script src="history.js"></script>
+  <script src="theme.js"></script>
+
+</body>
+</html>

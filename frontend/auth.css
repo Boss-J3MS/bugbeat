@@ -1,0 +1,398 @@
+/* ═══════════════════════════════════════════════
+   CODEBEAT — auth.css
+   Login and signup page styles
+═══════════════════════════════════════════════ */
+
+/* ── Split layout ─────────────────────────────── */
+/* The card and the logo used to sit centered on the exact same point,
+   so the busiest part of the logo (the bug + heartbeat detail) was
+   always hidden behind the card no matter how big either one got — that
+   was the real ceiling on "make the logo more visible". Splitting the
+   page into two panels removes the overlap entirely: .auth-visual is a
+   dedicated, full-height space where the logo and code-rain render with
+   nothing ever in front of them, and .auth-form-panel holds an ordinary
+   *opaque* card — no more translucency/blur/contrast-math needed there,
+   since it no longer shares its background with anything animated. */
+.auth-page {
+  display: flex;
+  /* style.css sets body { flex-direction: column } globally — override it
+     back to a row here, since the split layout needs the two panels
+     side by side, not stacked. */
+  flex-direction: row;
+  min-height: 100vh;
+  background: var(--bg);
+  overflow: auto;
+}
+
+.auth-visual {
+  position: relative;
+  flex: 1 1 60%;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.auth-form-panel {
+  position: relative;
+  flex: 1 1 40%;
+  /* Keeps the form usable once the viewport gets genuinely narrow (the
+     flex-basis is a target, not a floor) — the visual panel is the one
+     that gives up space here, not the form. */
+  min-width: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  border-left: 1px solid var(--border);
+}
+
+/* Below this width there isn't room for both a legible form AND a
+   meaningful chunk of animation, so the visual panel drops out entirely
+   rather than being squeezed into a sliver — the form gets the full,
+   usable width instead. */
+@media (max-width: 860px) {
+  .auth-visual { display: none; }
+  .auth-form-panel { flex: 1 1 100%; border-left: none; }
+}
+
+.auth-theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+}
+
+/* ── Code-rain background ─────────────────────── */
+/* Fills the visual panel (not the whole page) — drawn and animated in
+   rain.js, sized to that panel via ResizeObserver. Nothing else ever
+   renders on top of it here, so unlike the earlier single-panel design
+   there's no text to protect and no contrast tightrope to walk. */
+.auth-rain-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+@media (prefers-contrast: more), (forced-colors: active) {
+  .auth-rain-bg { display: none; }
+}
+
+/* ── Pulsing logo ──────────────────────────────── */
+/* Two different images, one per theme — swapped by hiding/showing
+   rather than changing a single <img src>, so each can be faded
+   independently without JS.
+
+   .auth-bg-logo--dark uses bugbeatLogo-bg.png: a copy of the logo with
+   its opaque dark-navy disc keyed out by luminance (dark pixels ->
+   transparent, the cyan/purple/white linework -> kept near full
+   strength), leaving just the glowing bug+heartbeat linework and ring.
+
+   .auth-bg-logo--light uses the ORIGINAL bugbeatLogo.png as-is — now
+   that it has its own dedicated panel instead of sitting behind text,
+   it can run at close to full opacity and contrast. */
+.auth-bg-logo {
+  position: relative;
+  width: min(78%, 560px);
+  max-height: 76vh;
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
+.auth-bg-logo--dark {
+  opacity: 0.92;
+  animation: bugbeat-pulse 1.8s ease-in-out infinite;
+}
+.auth-bg-logo--light { display: none; }
+
+:root[data-theme="light"] .auth-bg-logo--dark { display: none; }
+:root[data-theme="light"] .auth-bg-logo--light {
+  display: block;
+  opacity: 0.95;
+  /* Pushes the navy disc darker and the ring/wing colors more saturated
+     — the badge reads as flatter and greyer against a light page than
+     it does against a dark one, so this pulls it back toward how
+     distinct/punchy it looks in the original artwork. */
+  filter: contrast(1.25) saturate(1.25);
+  animation: bugbeat-pulse-light 1.8s ease-in-out infinite;
+}
+
+/* "lub-DUB … pause" heartbeat rhythm: a small beat, a bigger beat,
+   then a rest before the cycle repeats — rather than one steady pulse. */
+@keyframes bugbeat-pulse {
+  0%   { transform: scale(1);    opacity: 0.92; }
+  10%  { transform: scale(1.05); opacity: 1;    }
+  20%  { transform: scale(1);    opacity: 0.92; }
+  30%  { transform: scale(1.08); opacity: 1;    }
+  42%  { transform: scale(1);    opacity: 0.92; }
+  100% { transform: scale(1);    opacity: 0.92; }
+}
+
+@keyframes bugbeat-pulse-light {
+  0%   { transform: scale(1);    opacity: 0.95; }
+  10%  { transform: scale(1.05); opacity: 1;    }
+  20%  { transform: scale(1);    opacity: 0.95; }
+  30%  { transform: scale(1.08); opacity: 1;    }
+  42%  { transform: scale(1);    opacity: 0.95; }
+  100% { transform: scale(1);    opacity: 0.95; }
+}
+
+/* Same "lub-DUB … pause" rhythm and duration as the logo's pulse, so the
+   card's glow and the logo's beat stay in sync across the split — a
+   quiet echo of the heartbeat on the otherwise-still side of the page,
+   instead of two unrelated animations running side by side. */
+@keyframes card-heartbeat-glow {
+  0%   { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
+                      0 0 0 0   color-mix(in srgb, var(--accent) 0%,  transparent); }
+  10%  { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent),
+                      0 0 18px 2px color-mix(in srgb, var(--accent) 25%, transparent); }
+  20%  { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
+                      0 0 0 0   color-mix(in srgb, var(--accent) 0%,  transparent); }
+  30%  { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+                      0 0 26px 4px color-mix(in srgb, var(--accent) 32%, transparent); }
+  42%  { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
+                      0 0 0 0   color-mix(in srgb, var(--accent) 0%,  transparent); }
+  100% { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent),
+                      0 0 0 0   color-mix(in srgb, var(--accent) 0%,  transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-bg-logo--dark, .auth-bg-logo--light { animation: none; }
+  .auth-card {
+    animation: none;
+    /* Still gets a resting glow instead of the plain border — reduced
+       motion means no pulsing, not no personality. */
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent),
+                0 0 16px 2px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+}
+
+/* Respect an explicit request for more contrast (OS-level "increase
+   contrast" setting, or Windows High Contrast Mode) by dropping the
+   decorative visual panel entirely rather than fighting it — a person
+   who has turned this on is telling the OS they need predictable,
+   high-contrast surfaces, and a pulsing multicolor logo is the opposite
+   of that regardless of how it's tuned. */
+@media (prefers-contrast: more), (forced-colors: active) {
+  .auth-visual { display: none; }
+  .auth-form-panel { flex: 1 1 100%; border-left: none; }
+  .auth-card { animation: none; box-shadow: none; }
+}
+
+.auth-card {
+  /* A plain, fully opaque card — the translucency this used to need
+     (plus the blur, the darker-than-usual muted text, the per-theme
+     opacity tuning) was all in service of staying legible over a moving
+     background it no longer sits on top of. Ordinary contrast rules
+     apply here now, same as every other card in the app.
+
+     The animated box-shadow below is purely decorative — it sits outside
+     the card's box, never over its own content, so it carries zero
+     contrast risk no matter how bright it gets. */
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  /* A small negative delay so the glow's "attack" lands in step with the
+     logo's — box-shadow blur ramps up more gradually to the eye than a
+     transform: scale() does, so at delay 0 the two reads as a beat
+     behind even though both animations start at the same instant. */
+  animation: card-heartbeat-glow 1.8s ease-in-out -0.1s infinite;
+  padding: 2.5rem 2rem;
+  width: 100%;
+  max-width: 420px;
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-title {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.4px;
+  margin-bottom: 0.3rem;
+}
+
+.auth-subtitle {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-bottom: 1.5rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.auth-field label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.auth-field input {
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  /* Starts blended into the card — background matches the card itself
+     and the border is transparent, so the field reads as quiet/minimal
+     until its label (or the field itself) is hovered, or it's focused.
+     The gradient layer underneath is the click-only underline from
+     before, animated independently via background-size. */
+  background-color: var(--bg-panel);
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0% 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  color: var(--text);
+  padding: 0.6rem 0.85rem;
+  height: 42px;
+  outline: none;
+  transition: background-color 0.2s ease, border-color 0.2s ease, background-size 0.2s ease;
+  width: 100%;
+}
+
+/* Hovering the label reveals the field below it; hovering the field
+   itself keeps it revealed as the cursor moves down into it. Focus gets
+   the exact same reveal, so tabbing in with a keyboard (or tapping on
+   touch, where hover doesn't exist at all) shows a fully-visible,
+   fully-usable box every time — hover is a preview, never a requirement
+   to actually see or use the field. */
+.auth-field label:hover + input,
+.auth-field label:hover + .auth-field__input-wrap input,
+.auth-field input:hover,
+.auth-field input:focus {
+  background-color: var(--bg-input);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+/* Clicking in is what additionally reveals the underline — kept as its
+   own signal on top of the box reveal above, so there's still a clear
+   "you're typing here now" cue beyond the box just being visible. */
+.auth-field input:focus {
+  background-size: 100% 2px;
+}
+.auth-field input::placeholder { color: var(--text-muted); opacity: 0.6; }
+
+/* Windows High Contrast Mode / forced-colors strips custom backgrounds
+   and borders, so the reveal and underline tricks above won't render
+   there — restore a plain, unmissable focus outline for keyboard users
+   in that mode. */
+@media (forced-colors: active) {
+  .auth-field input:focus { outline: 2px solid CanvasText; }
+}
+
+.auth-field__input-wrap {
+  position: relative;
+}
+.auth-field__input-wrap input {
+  /* Room for the Show/Hide button so typed text never runs under it. */
+  padding-right: 3.4rem;
+}
+
+.auth-field__toggle-pw {
+  position: absolute;
+  top: 50%;
+  right: 0.85rem;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.auth-field__toggle-pw:hover,
+.auth-field__toggle-pw:focus-visible {
+  color: var(--accent);
+}
+
+.auth-field__hint {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.auth-btn {
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  font-weight: 600;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  height: 44px;
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: background 0.15s, opacity 0.15s;
+  width: 100%;
+}
+.auth-btn:hover:not(:disabled) { background: var(--accent-hover); }
+.auth-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.auth-error {
+  background: var(--critical-bg);
+  border: 1px solid var(--critical);
+  color: var(--status-error-text);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-success {
+  background: var(--clean-bg);
+  border: 1px solid var(--clean);
+  color: var(--status-success-text);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.82rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-switch {
+  margin-top: 1.5rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.auth-switch a {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+}
+.auth-switch a:hover { text-decoration: underline; }
+
+/* ── Auth responsive ─────────────────────────── */
+@media (max-width: 480px) {
+  .auth-card {
+    padding: 1.5rem 1rem;
+    border-radius: var(--radius-md);
+  }
+  .auth-title    { font-size: 1.2rem; }
+  .auth-btn      { height: 40px; font-size: 0.85rem; }
+  .auth-field input { height: 38px; font-size: 0.85rem; }
+}

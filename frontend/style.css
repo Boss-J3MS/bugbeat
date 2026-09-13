@@ -1,0 +1,929 @@
+/* ═══════════════════════════════════════════════
+   CODEBEAT — style.css
+   4-panel dark studio layout
+═══════════════════════════════════════════════ */
+
+:root {
+  color-scheme: dark;
+
+  --bg:          #0d0f12;
+  --bg-panel:    #13161b;
+  --bg-input:    #1a1d24;
+  --border:      #2a2e38;
+  --text:        #e8eaf0;
+  --text-muted:  #6b7180;
+  --accent:      #1de4a8;
+  --accent-hover: #25ffbe;
+  --on-accent:   #000;
+
+  --clean:       #3b9e5e;
+  --clean-bg:    #0e2318;
+  --warning:     #d9921e;
+  --warning-bg:  #281a06;
+  --error:       #d45a30;
+  --error-bg:    #26110a;
+  --critical:    #d43c3c;
+  --critical-bg: #240909;
+
+  --status-error-text:   #f08080;
+  --status-success-text: #7ecf8a;
+
+  --radius-sm:   4px;
+  --radius-md:   8px;
+  --radius-lg:   12px;
+
+  --font-ui:     'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-code:   'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+
+  --header-h:    52px;
+}
+
+/* ── Light theme ─────────────────────────────────
+   Applied via data-theme="light" on <html>, toggled by theme.js
+   and persisted to localStorage. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg:          #f4f5f7;
+  --bg-panel:    #ffffff;
+  --bg-input:    #edeff3;
+  --border:      #d7dbe2;
+  --text:        #1b1e24;
+  --text-muted:  #6a7180;
+  --accent:      #0ea472;
+  --accent-hover: #0c8f63;
+  --on-accent:   #ffffff;
+
+  --clean:       #2f8a4e;
+  --clean-bg:    #e6f4ea;
+  --warning:     #a8690c;
+  --warning-bg:  #fbf0dc;
+  --error:       #b8481f;
+  --error-bg:    #fbe6dd;
+  --critical:    #c23232;
+  --critical-bg: #fbdede;
+
+  --status-error-text:   #b3261e;
+  --status-success-text: #1e7a3d;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Several components below (buttons, panels, modals) set their own
+   `display` unconditionally — e.g. `.cb-btn { display: inline-flex }`.
+   A component's own author CSS always beats the browser's built-in
+   `[hidden] { display: none }` default, no matter how the selector
+   specificities compare, so without this, setting an element's
+   `hidden` attribute (or `el.hidden = true` in JS) silently does
+   nothing wherever a class like that is also present — the element
+   stays fully visible. admin.css already carries this exact fix for
+   `.admin-modal`; this generalizes it to every element in the app, so
+   `hidden` can't be silently overridden again by some future class. */
+[hidden] { display: none !important; }
+
+html, body { height: 100%; }
+body {
+  font-family: var(--font-ui);
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* Vertical scroll is a safety net: at high zoom levels even a wrapping
+     header can end up taller than the viewport, and with no scroll at
+     all, whatever falls below the fold becomes completely unreachable. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+body, .cb-panel, .cb-header, input, textarea, select, button {
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+/* ── Header ──────────────────────────────────── */
+.cb-header {
+  min-height: var(--header-h);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  padding: 0.5rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.cb-header__logo {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.cb-logo-icon { font-size: 1.4rem; color: var(--accent); }
+.cb-logo-text { font-size: 1.1rem; font-weight: 600; letter-spacing: -0.3px; }
+
+.cb-logo-img {
+  height: 48px;
+  width: auto;
+  display: block;
+}
+/* Bigger on the login/signup cards, which have room above the title. */
+.cb-logo-img--auth { height: 56px; }
+
+.cb-header__tagline {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.cb-header__controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  /* Must be allowed to shrink (and have no intrinsic min-width) so that,
+     once .cb-header wraps this whole cluster onto its own row, the row
+     itself can also be narrower than the cluster's natural content width.
+     Without this, flex-shrink:0 forced this box to stay as wide as all
+     its children combined, so it kept overflowing past the viewport edge
+     at high zoom (where the CSS layout width shrinks) and got clipped by
+     body's overflow-x:hidden — the internal flex-wrap never got a chance
+     to do anything because the container itself never got narrower. */
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* ── Music search ────────────────────────────── */
+.cb-music-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cb-input--search {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0 0.7rem;
+  height: 30px;
+  width: 260px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.cb-input--search:focus { border-color: var(--accent); }
+.cb-input--search::placeholder { color: var(--text-muted); opacity: 0.7; }
+
+.cb-music-label {
+  font-size: 0.7rem;
+  color: var(--accent);
+  white-space: nowrap;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-style: italic;
+}
+
+.cb-music-label.loading { color: var(--text-muted); animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* ── Error banner ────────────────────────────── */
+.cb-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: var(--critical-bg);
+  border-bottom: 1px solid var(--critical);
+  color: var(--status-error-text);
+  font-size: 0.82rem;
+  padding: 0.5rem 1.25rem;
+  flex-shrink: 0;
+}
+
+/* ── 2x2 workspace ───────────────────────────── */
+.cb-workspace {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  flex: 1;
+  /* No overflow:hidden here on purpose. body is a column flex layout with
+     only min-height:100vh (not a fixed height), so when the header wraps
+     to extra rows at high zoom, this element's flex-grow share of the
+     remaining space shrinks. If this box clipped its own overflow, that
+     shrinkage just erased content instead of pushing the page taller —
+     there was nothing left below the fold to scroll to. Letting it (and
+     the page) grow past the viewport, with a floor so panels stay usable,
+     means body's scrollbar can always reach everything. */
+  min-height: 420px;
+  gap: 0;
+}
+
+/* ── Panels ──────────────────────────────────── */
+.cb-panel {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  min-width: 0;
+}
+.cb-panel:nth-child(2n) { border-right: none; }
+.cb-panel:nth-child(3),
+.cb-panel:nth-child(4) { border-bottom: none; }
+
+.cb-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg-panel);
+}
+
+.cb-panel__title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+/* ── Monaco editor container ─────────────────── */
+.cb-monaco {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Monaco manages its own background/text/cursor/line-number colors via
+   its own theme (codebeat-dark / codebeat-light, defined in app.js), which
+   is switched to match the page's light/dark toggle. Forcing colors here
+   with the page's --bg/--text vars would fight with whichever Monaco
+   theme is active, so we deliberately leave Monaco's own theme in charge. */
+
+/* Active line highlight */
+.cb-monaco-active-line {
+  background: rgba(29, 228, 168, 0.08) !important;
+  border-left: 2px solid var(--accent) !important;
+}
+
+/* Error decorations */
+.cb-monaco-deco-warning  { background: rgba(217,146,30,0.15); border-left: 2px solid var(--warning); }
+.cb-monaco-deco-error    { background: rgba(212,90,48,0.15);  border-left: 2px solid var(--error); }
+.cb-monaco-deco-critical { background: rgba(212,60,60,0.2);   border-left: 2px solid var(--critical); }
+
+/* ── ML complexity summary (top of Issues panel) ─ */
+.cb-ml {
+  flex-shrink: 0;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel-alt, var(--bg-panel));
+}
+.cb-ml__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.cb-ml__badge {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-muted);
+}
+.cb-ml__badge--low       { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
+.cb-ml__badge--medium    { background: var(--warning-bg);  color: var(--warning);  border-color: var(--warning); }
+.cb-ml__badge--high      { background: var(--error-bg);    color: var(--error);    border-color: var(--error); }
+.cb-ml__badge--very_high { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+.cb-ml__score {
+  font-family: var(--font-code);
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text);
+}
+.cb-ml__lang {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: auto;
+}
+.cb-ml__summary {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.cb-ml--unavailable {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Issues panel ────────────────────────────── */
+.cb-issue-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cb-issue {
+  border-radius: var(--radius-md);
+  padding: 0.5rem 0.65rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  flex-shrink: 0;
+}
+.cb-issue:hover { opacity: 0.75; }
+.cb-issue--warning  { background: var(--warning-bg);  border-color: var(--warning); }
+.cb-issue--error    { background: var(--error-bg);    border-color: var(--error); }
+.cb-issue--critical { background: var(--critical-bg); border-color: var(--critical); }
+
+.cb-issue__line {
+  font-family: var(--font-code);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-right: 0.4rem;
+}
+.cb-issue__severity {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cb-issue--warning  .cb-issue__severity { color: var(--warning); }
+.cb-issue--error    .cb-issue__severity { color: var(--error); }
+.cb-issue--critical .cb-issue__severity { color: var(--critical); }
+.cb-issue__msg { font-size: 0.75rem; color: var(--text); margin-top: 2px; line-height: 1.4; }
+
+/* ── Sequencer panel ─────────────────────────── */
+.cb-sequencer {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0.75rem;
+  align-content: flex-start;
+  overflow-y: auto;
+}
+
+.cb-beat {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-code);
+  font-size: 0.6rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: transform 0.08s;
+  user-select: none;
+  flex-shrink: 0;
+}
+.cb-beat:hover { transform: scale(1.12); }
+.cb-beat--active { transform: scale(1.2); box-shadow: 0 0 0 2px currentColor; }
+.cb-beat--clean    { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
+.cb-beat--warning  { background: var(--warning-bg);  color: var(--warning);  border-color: var(--warning); }
+.cb-beat--error    { background: var(--error-bg);    color: var(--error);    border-color: var(--error); }
+.cb-beat--critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+
+/* ── Playback panel ──────────────────────────── */
+.cb-panel--playback {
+  background: var(--bg-panel);
+}
+
+.cb-playback {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.cb-progress {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.cb-progress__fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.1s linear;
+}
+
+.cb-bpm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.cb-bpm-label { font-size: 0.72rem; color: var(--text-muted); }
+
+/* Custom range slider track/thumb — some browsers don't fully theme a
+   native <input type="range"> track via color-scheme/accent-color alone,
+   so we take over the visuals directly with our own theme variables. */
+.cb-bpm-range {
+  flex: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  /* --bpm-fill is kept in sync with the current value by app.js
+     (updateBpmFill) so the track shows a green "progress" fill up
+     to the thumb, like the browser-native accent-color fill used to. */
+  background: linear-gradient(
+    to right,
+    var(--accent) 0%,
+    var(--accent) var(--bpm-fill, 0%),
+    var(--bg-input) var(--bpm-fill, 0%),
+    var(--bg-input) 100%
+  );
+}
+.cb-bpm-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: transparent; /* the gradient fill comes from .cb-bpm-range itself, showing through */
+  border-radius: var(--radius-sm);
+}
+.cb-bpm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.cb-bpm-range::-moz-range-track {
+  height: 4px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  border: none;
+}
+.cb-bpm-range::-moz-range-progress {
+  height: 4px;
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+}
+.cb-bpm-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  cursor: pointer;
+}
+.cb-bpm-val { font-size: 0.72rem; font-family: var(--font-code); color: var(--text); min-width: 28px; }
+
+/* ── Stats ───────────────────────────────────── */
+.cb-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--border);
+  flex: 1;
+}
+.cb-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.5rem;
+  background: var(--bg-panel);
+  gap: 4px;
+}
+.cb-stat__num {
+  font-size: 1.4rem;
+  font-weight: 700;
+  font-family: var(--font-code);
+  line-height: 1;
+}
+.cb-stat__label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.cb-stat--clean    .cb-stat__num { color: var(--clean); }
+.cb-stat--warning  .cb-stat__num { color: var(--warning); }
+.cb-stat--error    .cb-stat__num { color: var(--error); }
+.cb-stat--critical .cb-stat__num { color: var(--critical); }
+
+/* ── Shared components ───────────────────────── */
+.cb-btn {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 500;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: 0 0.8rem;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: opacity 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+.cb-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.cb-btn--primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.cb-btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
+.cb-btn--ghost { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border); }
+.cb-btn--ghost:hover:not(:disabled) { color: var(--text); border-color: var(--text-muted); }
+.cb-btn--play, .cb-btn--stop {
+  background: var(--bg-input);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.cb-btn--play:hover:not(:disabled),
+.cb-btn--stop:hover:not(:disabled) { border-color: var(--accent); }
+
+/* ── Music search ────────────────────────────── */
+.cb-music-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cb-input--search {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0 0.6rem;
+  height: 30px;
+  outline: none;
+  width: 220px;
+  transition: border-color 0.15s;
+}
+.cb-input--search:focus { border-color: var(--accent); }
+.cb-input--search::placeholder { color: var(--text-muted); }
+
+.cb-music-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.cb-music-status {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cb-music-status--ok      { color: var(--accent); font-weight: 600; }
+.cb-music-status--error   { color: var(--critical); }
+.cb-music-status--loading { color: var(--text-muted); animation: pulse 1s infinite; }
+
+.cb-music-label {
+  font-size: 0.7rem;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cb-music-label.loading { color: var(--text-muted); animation: pulse 1s infinite; }
+
+@keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+.cb-user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* This cluster currently fits its row at every zoom level we've tested,
+     but that depends on the username being short. flex-wrap here is a
+     safety net so a long username pushes Admin/Logout onto a second line
+     within this cluster instead of clipping off the edge of the header. */
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.cb-user-greeting {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+/* ── Notifications ─────────────────────────────
+   Bell + badge live in the header; the dropdown below is the backend
+   feature (GET/PATCH /notifications) that already existed with nothing
+   in the UI consuming it — this is that missing frontend. */
+.cb-notif {
+  position: relative;
+}
+
+.cb-notif__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--critical);
+  color: #fff;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.cb-notif__dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 320px;
+  max-width: calc(100vw - 2rem);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  overflow: hidden;
+}
+
+.cb-notif__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cb-notif__mark-all {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  font-family: var(--font-ui);
+}
+.cb-notif__mark-all:hover { text-decoration: underline; }
+.cb-notif__mark-all:disabled { color: var(--text-muted); cursor: default; text-decoration: none; }
+
+.cb-notif__list {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.cb-notif__empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.cb-notif__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.cb-notif__item:last-child { border-bottom: none; }
+.cb-notif__item:hover { background: var(--bg-input); }
+
+.cb-notif__item--unread {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.cb-notif__item--unread:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.cb-notif__item--unread .cb-notif__item-msg { font-weight: 600; }
+
+.cb-notif__item-msg {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.cb-notif__item-time {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+@media (max-width: 720px) {
+  .cb-notif__dropdown { right: -3.75rem; }
+}
+
+.cb-audio-upload {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cb-btn--danger {
+  color: var(--critical);
+  border-color: var(--critical-bg);
+}
+.cb-btn--danger:hover { border-color: var(--critical); }
+
+
+.cb-select {
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0 0.5rem;
+  height: 30px;
+  outline: none;
+  cursor: pointer;
+}
+
+.cb-badge {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 1px 7px;
+  color: var(--text-muted);
+}
+
+.cb-meta { font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-code); }
+
+.cb-legend { display: flex; gap: 4px; }
+.cb-legend-item {
+  font-size: 0.6rem;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+}
+.cb-legend-item--clean    { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
+.cb-legend-item--warning  { background: var(--warning-bg);  color: var(--warning);  border-color: var(--warning); }
+.cb-legend-item--error    { background: var(--error-bg);    color: var(--error);    border-color: var(--error); }
+.cb-legend-item--critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+
+.cb-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  width: 100%;
+  padding: 2rem 1rem;
+  text-align: center;
+}
+.cb-empty-state__icon { font-size: 1.5rem; opacity: 0.3; }
+
+/* ── Scrollbar styling ───────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ── Responsive ──────────────────────────────── */
+
+/* Tablet (768px) */
+@media (max-width: 768px) {
+  body { overflow: auto; }
+
+  /* Header */
+  .cb-header {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 0.6rem 0.75rem;
+    gap: 0.5rem;
+  }
+  .cb-header__tagline { display: none; }
+  .cb-header__controls {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  /* flex-basis:100% forces this onto its own full-width row instead of
+     competing for leftover space alongside the selects/upload button in
+     the same flex line — that competition is what was squeezing the
+     input+button down to ~37px/44px wide (basis:0% + flex-grow:1 only
+     gets whatever scraps are left after non-shrinking siblings claim
+     theirs), which made them render as tiny blank, seemingly-overlapping
+     boxes with no room to show their placeholder text or icon. */
+  .cb-music-search { flex: 1 1 100%; min-width: 0; }
+  /* Share the now-full-width row with the button instead of both
+     claiming 100% width (which pushed the button onto its own line
+     below, squeezed again). */
+  .cb-input--search { flex: 1 1 auto; width: auto; min-width: 0; }
+  .cb-user-info { margin-left: auto; }
+
+  /* 2x2 → single column */
+  .cb-workspace {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    height: auto;
+  }
+  .cb-panel {
+    min-height: 280px;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .cb-panel:nth-child(2n) { border-right: none; }
+  .cb-panel:nth-child(3),
+  .cb-panel:nth-child(4)  { border-bottom: 1px solid var(--border); }
+  .cb-panel:last-child    { border-bottom: none; }
+
+  /* Playback panel */
+  .cb-playback { flex-wrap: wrap; }
+  .cb-stats { grid-template-columns: repeat(4, 1fr); }
+
+  /* Beat grid */
+  .cb-beat { width: 26px; height: 26px; font-size: 0.55rem; }
+}
+
+/* Mobile (480px) */
+@media (max-width: 480px) {
+  .cb-header { padding: 0.5rem; }
+  .cb-header__controls { gap: 0.3rem; }
+
+  /* Hide less important header items on small screens */
+  .cb-audio-upload .cb-btn span { display: none; }
+  #audio-label { display: none; }
+
+  /* Stack controls vertically */
+  .cb-header__controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+  }
+  .cb-music-search { grid-column: 1 / -1; }
+  #analyze-btn     { grid-column: 1 / -1; width: 100%; justify-content: center; }
+
+  /* Monaco editor smaller font on mobile */
+  .cb-monaco { min-height: 220px; }
+
+  /* Sequencer beats smaller */
+  .cb-beat { width: 22px; height: 22px; font-size: 0.5rem; }
+
+  /* Stats 2x2 on mobile */
+  .cb-stats { grid-template-columns: 1fr 1fr; }
+  .cb-stat__num { font-size: 1.1rem; }
+
+  /* BPM row compact */
+  .cb-bpm-range { width: 60px; }
+
+  /* Panel headers compact */
+  .cb-panel__header { padding: 0.4rem 0.6rem; }
+  .cb-legend { gap: 3px; }
+  .cb-legend-item { font-size: 0.55rem; padding: 1px 4px; }
+
+  /* Issues panel */
+  .cb-issue { padding: 0.4rem 0.6rem; }
+  .cb-issue__msg { font-size: 0.72rem; }
+
+  /* Playback controls */
+  .cb-playback { padding: 0.5rem 0.6rem; gap: 0.4rem; }
+  .cb-bpm-row   { padding: 0.5rem 0.6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-beat, .cb-progress__fill { transition: none; }
+}
