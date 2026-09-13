@@ -4,7 +4,13 @@
    Web Audio API file upload + Gemini analysis
 ═══════════════════════════════════════════════ */
 
-const BACKEND_URL = 'http://localhost:3000';
+// Auto-detects environment: Live Server / localhost keeps hitting your local
+// backend for development, while the deployed Vercel site talks to Render —
+// so you don't have to hand-edit this every time you switch between the two.
+const BACKEND_URL =
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? 'http://localhost:3000'
+    : 'https://bugbeat.onrender.com';
 
 // ── Auth guard ─────────────────────────────────
 // Redirect to login if not logged in
