@@ -15,7 +15,11 @@ const pool = mysql.createPool({
   database: process.env.DB_NAME     || 'bugbeat',
   waitForConnections: true,
   connectionLimit:    10,
-  queueLimit:         0
+  queueLimit:         0,
+  // Local XAMPP MySQL doesn't use/require TLS, but Aiven (and most managed
+  // MySQL hosts) reject plain connections outright. Set DB_SSL=true in the
+  // deployed environment (Render) to turn this on; leave it unset locally.
+  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined
 });
 
 // Test connection on startup

@@ -27,6 +27,11 @@ dotenv.config();
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+// Locally this is the Python FastAPI service on your machine; once deployed,
+// set ML_SERVICE_URL to wherever it actually lives (e.g. a Hugging Face
+// Space) — otherwise the deployed backend will try to reach its own
+// container on port 5000, where nothing is listening.
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5000';
 
 app.use(express.json({ limit: '50mb' }));
 
@@ -236,7 +241,7 @@ app.post('/complexity', async (req, res) => {
     return res.status(400).json({ error: 'Missing or empty "code" field.' });
   }
   try {
-    const mlRes = await fetch('http://localhost:5000/complexity', {
+    const mlRes = await fetch(`${ML_SERVICE_URL}/complexity`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, lang, use_codebert })
