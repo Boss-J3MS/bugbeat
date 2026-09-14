@@ -139,7 +139,10 @@
   </div>
 
   <script>
-    const BACKEND_URL = 'http://localhost:3000';
+    const BACKEND_URL =
+      (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? 'http://localhost:3000'
+        : 'https://bugbeat.onrender.com';
     const token = localStorage.getItem('cb_token');
     const user  = JSON.parse(localStorage.getItem('cb_user') || 'null');
 
