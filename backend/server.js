@@ -35,6 +35,15 @@ const PORT = process.env.PORT || 3000;
 // container on port 5000, where nothing is listening.
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5000';
 
+// Render (and most hosts) sit their app behind a reverse proxy, which sets
+// X-Forwarded-For to the real client IP. Without telling Express to trust
+// that one hop, express-rate-limit can't tell who's making requests and
+// throws on every single request (breaking EVERYTHING, not just rate
+// limiting) as a safety check against IP spoofing. '1' = trust exactly one
+// hop of proxy, which matches Render's setup; locally there's no proxy in
+// front, so this has no effect on your own machine.
+app.set('trust proxy', 1);
+
 // Security headers (CSP is left to defaults off since the frontend is a
 // separate static site on a different origin — this backend serves JSON only).
 app.use(helmet());
