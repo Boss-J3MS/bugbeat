@@ -389,7 +389,7 @@ if (audioUpload) {
       audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
       const arrayBuffer = await file.arrayBuffer();
       audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      setMusicStatus(`✅ "${file.name}" loaded — plays as backing track`, 'ok');
+      setMusicStatus(`✅ "${file.name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
     } catch(err) {
       setMusicStatus('⚠ Could not decode audio file. Try an MP3 or WAV.', 'error');
       audioBuffer = null;
@@ -567,7 +567,7 @@ function initSynths() {
   padSynth = new Tone.PolySynth(Tone.Synth, {
     oscillator: { type: oscType },
     envelope: { attack: 0.3, decay: 0.5, sustain: 0.7, release: 1.5 },
-    volume: -18
+    volume: -22
   }).connect(reverb);
 
   melodySynth = new Tone.PolySynth(Tone.Synth, {
@@ -579,7 +579,7 @@ function initSynths() {
   leadSynth = new Tone.Synth({
     oscillator: { type: oscType },
     envelope: { attack: 0.005, decay: 0.2, sustain: 0.3, release: 0.4 },
-    volume: -16
+    volume: -11
   }).connect(pitchShift);
 
   const hihatFreq = drum.hihatFrequency ?? 400;
@@ -587,13 +587,13 @@ function initSynths() {
   kickSynth = new Tone.MembraneSynth({
     pitchDecay: drum.kickPitchDecay ?? 0.06, octaves: drum.kickOctaves ?? 8,
     envelope: { attack: 0.001, decay: 0.35, sustain: 0, release: 0.1 },
-    volume: -8
+    volume: -12
   }).connect(limiter);
 
   snareSynth = new Tone.NoiseSynth({
     noise: { type: drum.snareNoiseType ?? 'white' },
     envelope: { attack: 0.001, decay: 0.18, sustain: 0.02, release: 0.05 },
-    volume: -14
+    volume: -17
   }).connect(reverb);
 
   hihatSynth = new Tone.MetalSynth({
@@ -605,7 +605,7 @@ function initSynths() {
   openHihatSynth = new Tone.MetalSynth({
     frequency: hihatFreq * 1.5, envelope: { attack: 0.001, decay: 0.3, release: 0.1 },
     harmonicity: 5.1, modulationIndex: 16, resonance: 3000, octaves: 1.5,
-    volume: -20
+    volume: -23
   }).connect(reverb);
 
   synthsReady = true;
@@ -719,9 +719,18 @@ function startPlayback() {
   if (!beatData.length) return;
   isPlaying = true; playIndex = 0; chordIndex = 0;
   playBtn.textContent = '⏸';
-  initSynths();
-  startLoop();
-  if (audioBuffer) playAudioFile();
+
+  // An uploaded track replaces the synthesized instruments entirely —
+  // it plays on its own, with the same severity-based distortion/pitch
+  // effects applied directly to the real audio, instead of layering the
+  // AI-generated bass/pad/lead/drums on top of it.
+  const usingUploadedTrack = !!audioBuffer;
+  if (usingUploadedTrack) {
+    playAudioFile();
+  } else {
+    initSynths();
+    startLoop();
+  }
 
   function tick() {
     if (playIndex >= beatData.length) { playIndex = 0; resetFx(); }
@@ -738,7 +747,9 @@ function startPlayback() {
       resetFx();
     } else {
       applyFx(beat.severity);
-      accentBeat(beat.severity);
+      // accentBeat() triggers extra synth notes — skip it when an
+      // uploaded track is carrying the audio instead.
+      if (!usingUploadedTrack) accentBeat(beat.severity);
     }
 
     const stayMs = SEVERITY_FX[beat.severity]?.stayMs || 300;
@@ -900,10 +911,10 @@ async function saveAnalysisToHistory(code, lang, lines) {
     const fusionScore = Math.min(parseFloat(rawScore.toFixed(4)), 1.0);
 
     // ── Determine risk level ────────────────────
-    let riskLevel = 'Low';
-    if      (fusionScore >= 0.76) riskLevel = 'Critical';
-    else if (fusionScore >= 0.51) riskLevel = 'High';
-    else if (fusionScore >= 0.26) riskLevel = 'Medium';
+    let riskLevel = 'low';
+    if      (fusionScore >= 0.76) riskLevel = 'critical';
+    else if (fusionScore >= 0.51) riskLevel = 'high';
+    else if (fusionScore >= 0.26) riskLevel = 'medium';
 
     // ── Build issues array ──────────────────────
     const issues = lines

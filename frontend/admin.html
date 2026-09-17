@@ -167,6 +167,16 @@
       return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
     }
 
+    // Escapes text for safe interpolation into innerHTML. All fields that
+    // originate from user input (username, email, etc.) must go through
+    // this before being rendered — otherwise a malicious username stored
+    // during signup could execute as HTML/JS in the admin panel.
+    function esc(str) {
+      return String(str ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[c]));
+    }
+
     // ── Tab switching ──────────────────────────
     document.querySelectorAll('.admin-nav__btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -213,22 +223,22 @@
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
       document.getElementById('risk-breakdown').innerHTML = data.risk_breakdown.map(r => `
         <div class="admin-breakdown__row">
-          <span class="admin-breakdown__label" style="color:${riskColors[r.risk_level?.toLowerCase()] || '#fff'}">${r.risk_level}</span>
-          <span class="admin-breakdown__val">${r.count}</span>
+          <span class="admin-breakdown__label" style="color:${riskColors[r.risk_level?.toLowerCase()] || '#fff'}">${esc(r.risk_level)}</span>
+          <span class="admin-breakdown__val">${esc(r.count)}</span>
         </div>`).join('') || '<p class="admin-empty">No data yet</p>';
 
       // Language breakdown
       document.getElementById('lang-breakdown').innerHTML = data.lang_breakdown.map(l => `
         <div class="admin-breakdown__row">
-          <span class="admin-breakdown__label">${l.language}</span>
-          <span class="admin-breakdown__val">${l.count}</span>
+          <span class="admin-breakdown__label">${esc(l.language)}</span>
+          <span class="admin-breakdown__val">${esc(l.count)}</span>
         </div>`).join('') || '<p class="admin-empty">No data yet</p>';
 
       // Recent users
       document.getElementById('recent-users').innerHTML = data.recent_users.map(u => `
         <div class="admin-breakdown__row">
-          <span class="admin-breakdown__label">${u.username}</span>
-          <span class="admin-breakdown__val admin-role admin-role--${u.role}">${u.role}</span>
+          <span class="admin-breakdown__label">${esc(u.username)}</span>
+          <span class="admin-breakdown__val admin-role admin-role--${esc(u.role)}">${esc(u.role)}</span>
         </div>`).join('') || '<p class="admin-empty">No users yet</p>';
     }
 
@@ -244,27 +254,42 @@
     function renderUsers(users) {
       document.getElementById('users-tbody').innerHTML = users.map(u => `
         <tr>
-          <td>${u.id}</td>
-          <td>${u.username}</td>
-          <td>${u.email}</td>
-          <td><span class="admin-role admin-role--${u.role}">${u.role}</span></td>
-          <td>${u.total_analyses}</td>
+          <td>${esc(u.id)}</td>
+          <td>${esc(u.username)}</td>
+          <td>${esc(u.email)}</td>
+          <td><span class="admin-role admin-role--${esc(u.role)}">${esc(u.role)}</span></td>
+          <td>${esc(u.total_analyses)}</td>
           <td>${formatDate(u.created_at)}</td>
           <td>${u.last_login ? formatDate(u.last_login) : '—'}</td>
           <td class="admin-actions">
             ${u.id !== user.id ? `
               <button class="cb-btn cb-btn--ghost admin-btn-sm"
-                onclick="toggleRole(${u.id}, '${u.role}')">
+                data-action="toggle-role" data-id="${esc(u.id)}" data-role="${esc(u.role)}">
                 ${u.role === 'admin' ? 'Demote' : 'Promote'}
               </button>
               <button class="cb-btn cb-btn--ghost admin-btn-sm admin-btn-danger"
-                onclick="deleteUser(${u.id}, '${u.username}')">
+                data-action="delete-user" data-id="${esc(u.id)}" data-username="${esc(u.username)}">
                 Delete
               </button>
             ` : '<span class="admin-empty">You</span>'}
           </td>
         </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No users found</td></tr>';
     }
+
+    // Event delegation for row actions — user-controlled values (username)
+    // are read from data-* attributes rather than interpolated into an
+    // inline onclick handler, which closes off JS-injection via a
+    // username containing quotes/backslashes.
+    document.getElementById('users-tbody').addEventListener('click', e => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      if (btn.dataset.action === 'toggle-role') {
+        toggleRole(id, btn.dataset.role);
+      } else if (btn.dataset.action === 'delete-user') {
+        deleteUser(id, btn.dataset.username);
+      }
+    });
 
     // Search users
     document.getElementById('user-search').addEventListener('input', e => {
@@ -303,13 +328,13 @@
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
       document.getElementById('analyses-tbody').innerHTML = data.analyses.map(a => `
         <tr>
-          <td>${a.id}</td>
-          <td>${a.username}</td>
-          <td>${a.language}</td>
-          <td>${a.total_lines}</td>
-          <td>${a.issues_found}</td>
-          <td><span style="color:${riskColors[a.risk_level?.toLowerCase()] || '#fff'}">${a.risk_level}</span></td>
-          <td>${a.fusion_score}</td>
+          <td>${esc(a.id)}</td>
+          <td>${esc(a.username)}</td>
+          <td>${esc(a.language)}</td>
+          <td>${esc(a.total_lines)}</td>
+          <td>${esc(a.issues_found)}</td>
+          <td><span style="color:${riskColors[a.risk_level?.toLowerCase()] || '#fff'}">${esc(a.risk_level)}</span></td>
+          <td>${esc(a.fusion_score)}</td>
           <td>${formatDate(a.created_at)}</td>
         </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No analyses yet</td></tr>';
     }

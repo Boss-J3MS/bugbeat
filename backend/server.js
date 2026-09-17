@@ -17,11 +17,13 @@
 //  PATCH /notifications/read-all → Mark all as read
 // ═══════════════════════════════════════════════
 
-import express  from 'express';
-import cors     from 'cors';
-import dotenv   from 'dotenv';
+import express     from 'express';
+import cors        from 'cors';
+import dotenv       from 'dotenv';
+import helmet        from 'helmet';
+import rateLimit       from 'express-rate-limit';
 import db       from './db.js';
-import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin } from './auth.js';
+import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
 
 dotenv.config();
 
@@ -33,7 +35,33 @@ const PORT = process.env.PORT || 3000;
 // container on port 5000, where nothing is listening.
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5000';
 
-app.use(express.json({ limit: '50mb' }));
+// Security headers (CSP is left to defaults off since the frontend is a
+// separate static site on a different origin — this backend serves JSON only).
+app.use(helmet());
+
+// The app deals with source code snippets and JSON payloads, not large file
+// uploads (audio uploads currently only send metadata) — 50mb was far more
+// than anything legitimate needs and made a body-size DoS trivially cheap.
+app.use(express.json({ limit: '2mb' }));
+
+// General API rate limit — generous enough for normal use, but stops
+// trivial scripted abuse. Auth routes get a much stricter limit below
+// since credential stuffing / signup spam is the higher-value target.
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use(generalLimiter);
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts. Please wait a while before trying again.' },
+});
 
 const allowedOrigins = [
   process.env.FRONTEND_URL,
@@ -80,6 +108,37 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
   const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) throw new Error('Gemini returned an empty response.');
   return rawText.replace(/```json|```/g, '').trim();
+}
+
+// ── Helper: look up a song's REAL tempo/key via GetSongBPM ────
+// Gemini is asked to "recall" a song's actual BPM from memory, which it
+// frequently gets wrong or invents outright. GetSongBPM.com's database
+// gives us a verified tempo (and key) to use as a hard anchor instead of
+// trusting the model's memory. Returns null on no match / no API key /
+// any failure — the caller falls back to Gemini's own guess.
+async function lookupRealBPM(query) {
+  const apiKey = process.env.GETSONGBPM_API_KEY;
+  if (!apiKey) return null;
+  try {
+    const url = `https://api.getsong.co/search/?api_key=${apiKey}&type=song&lookup=${encodeURIComponent(query)}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data    = await res.json();
+    const results = data?.search;
+    if (!Array.isArray(results) || !results.length) return null;
+    const top = results[0];
+    const tempo = Number(top.tempo);
+    if (!Number.isFinite(tempo)) return null;
+    return {
+      title:  top.title || query,
+      artist: top.artist?.name || '',
+      tempo,
+      key:    top.key_of || null
+    };
+  } catch (err) {
+    console.error('GetSongBPM lookup failed:', err.message);
+    return null;
+  }
 }
 
 // ── Helper: sanitize a Gemini-generated music style ────────────
@@ -327,13 +386,23 @@ app.post('/music-search', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
 
+  // Try to find the song in a real music database first, so Gemini gets a
+  // verified tempo/key to anchor to instead of relying on its own memory.
+  const realSong = await lookupRealBPM(query);
+
   const prompt = `You are a music parameter engine for a web app called BugBeat that turns code errors into music.
 
 The user searched for a music style or song: "${query}"
-
+${realSong ? `
+VERIFIED DATABASE MATCH — treat this as ground truth, not a suggestion:
+"${realSong.title}"${realSong.artist ? ` by ${realSong.artist}` : ''} has a real, measured tempo of
+${realSong.tempo} BPM${realSong.key ? ` and is in the key of ${realSong.key}` : ''}. You MUST set
+"bpm" to exactly ${realSong.tempo} in your JSON response. Use this verified tempo${realSong.key ? ' and key' : ''}
+as the anchor for everything else you generate below.
+` : ''}
 If "${query}" sounds like a real song title or artist you recognize, recall its ACTUAL known
 characteristics as accurately as you can and use them as hard anchors, not loose suggestions:
-- its real approximate BPM/tempo
+- its real approximate BPM/tempo${realSong ? ' (already given above — use that exact value)' : ''}
 - its real key or scale (major/minor, and roughly which key)
 - its real genre and era (e.g. 2010s OPM pop-rock, 2020s future bass, 90s boom-bap)
 - its real typical instrumentation and production texture (e.g. acoustic guitar-driven, 808-heavy,
@@ -432,7 +501,10 @@ Rules:
     const text   = await callGemini(apiKey, prompt, 0.7);
     const parsed = JSON.parse(text);
     const style  = sanitizeStyle(parsed);
-    res.json({ style });
+    // Belt-and-suspenders: force the verified tempo even if Gemini didn't
+    // follow the instruction exactly.
+    if (realSong) style.bpm = Math.round(clampNum(realSong.tempo, 60, 180, style.bpm));
+    res.json({ style, matchedSong: realSong ? { title: realSong.title, artist: realSong.artist, tempo: realSong.tempo } : null });
   } catch (err) {
     console.error('/music-search error:', err.message);
     res.status(502).json({ error: err.message });
@@ -444,11 +516,33 @@ Rules:
 // ══════════════════════════════════════════════
 
 // ── POST /auth/signup ──────────────────────────
-app.post('/auth/signup', async (req, res) => {
+app.post('/auth/signup', authLimiter, async (req, res) => {
   const { username, email, password } = req.body;
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
+
+  // Restrict usernames to a safe character set so stored values can never
+  // break out of HTML/JS when rendered elsewhere (e.g. the admin panel).
+  // Letters, numbers, underscore, hyphen, period — 3 to 20 characters.
+  const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/;
+  if (!USERNAME_PATTERN.test(username)) {
+    return res.status(400).json({
+      error: 'Username must be 3-20 characters and can only contain letters, numbers, underscores, hyphens, and periods.'
+    });
+  }
+
+  // Basic email format check + length cap (defense in depth, not a full RFC validator)
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  const passwordCheck = validatePasswordStrength(password);
+  if (!passwordCheck.valid) {
+    return res.status(400).json({ error: passwordCheck.error });
+  }
+
   try {
     // Check existing
     const [existing] = await db.query(
@@ -511,7 +605,7 @@ app.post('/auth/signup', async (req, res) => {
 });
 
 // ── POST /auth/login ───────────────────────────
-app.post('/auth/login', async (req, res) => {
+app.post('/auth/login', authLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
@@ -616,6 +710,14 @@ app.post('/history/save', requireAuth, async (req, res) => {
 
   const issues_found = warning_count + error_count + critical_count;
 
+  // The DB's risk_level column only accepts lowercase values ('low',
+  // 'medium', 'high', 'critical') — normalize here so any caller that
+  // sends a different case (or something invalid) can't break the INSERT.
+  const VALID_RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical']);
+  const normalizedRiskLevel = VALID_RISK_LEVELS.has(String(risk_level).toLowerCase())
+    ? String(risk_level).toLowerCase()
+    : 'low';
+
   try {
     // Step 1: Save to ANALYSES
     const [result] = await db.query(
@@ -627,7 +729,7 @@ app.post('/history/save', requireAuth, async (req, res) => {
       [
         req.user.userId, language, total_lines, issues_found,
         clean_count, warning_count, error_count, critical_count,
-        fusion_score, risk_level
+        fusion_score, normalizedRiskLevel
       ]
     );
 
@@ -686,7 +788,7 @@ app.post('/history/save', requireAuth, async (req, res) => {
       `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
       [
         req.user.userId,
-        `Analysis complete — ${issues_found} issues found. Risk level: ${risk_level}.`,
+        `Analysis complete — ${issues_found} issues found. Risk level: ${normalizedRiskLevel}.`,
         'analysis'
       ]
     );
@@ -1004,6 +1106,10 @@ app.put('/admin/users/:id/role', requireAdmin, async (req, res) => {
   }
   try {
     await db.query('UPDATE users SET role = ? WHERE id = ?', [role, id]);
+    // Force any of this user's existing sessions to re-authenticate so the
+    // role change (e.g. an admin demotion) takes effect immediately instead
+    // of waiting out the old token's remaining lifetime.
+    await db.query('DELETE FROM sessions WHERE user_id = ?', [id]);
     res.json({ message: `User role updated to ${role}.` });
   } catch (err) {
     res.status(500).json({ error: 'Could not update role.' });
@@ -1017,6 +1123,9 @@ app.delete('/admin/users/:id', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'You cannot delete your own account.' });
   }
   try {
+    // Revoke any active sessions first so a deleted account's still-valid
+    // JWT can't keep being used against endpoints that don't re-check users.
+    await db.query('DELETE FROM sessions WHERE user_id = ?', [id]);
     await db.query('DELETE FROM users WHERE id = ?', [id]);
     res.json({ message: 'User deleted successfully.' });
   } catch (err) {
