@@ -1030,6 +1030,121 @@ app.patch('/notifications/:id/read', requireAuth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// CODE EXECUTION (paiza.io guest runner) — powers the Output/console panel
+// ══════════════════════════════════════════════
+// Judge0 CE (the original plan) dropped its free daily-quota tier and is
+// now pay-per-use-only on RapidAPI, which requires a credit card on file.
+// paiza.io's public "guest" API key needs no signup/card and is free —
+// tradeoffs: ~2s execution cap, no TypeScript support, and it's a
+// best-effort community service with no uptime guarantee.
+const PAIZA_API_URL = process.env.PAIZA_API_URL || 'https://api.paiza.io';
+const PAIZA_API_KEY = process.env.PAIZA_API_KEY || 'guest';
+
+// Maps the frontend's lang-select values to paiza.io language ids.
+// 'auto' has no fixed runtime, and 'typescript' isn't offered by paiza.io's
+// guest runner — both are intentionally left out, so the frontend blocks
+// Run (with a specific message for each case) before it ever reaches here.
+const PAIZA_LANGUAGE_IDS = {
+  javascript: 'javascript',
+  python:     'python3',
+  java:       'java',
+  cpp:        'cpp',
+  rust:       'rust',
+  go:         'go',
+};
+
+// paiza.io's guest key has no documented quota, but this still gets its
+// own limiter on top of requireAuth to keep our app from hammering a
+// shared free community resource.
+const executeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many run requests. Please wait a while before trying again.' },
+});
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── POST /execute ───────────────────────────────
+app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
+  const code  = String(req.body?.code  || '');
+  const lang  = String(req.body?.lang  || '');
+  const stdin = String(req.body?.stdin || '');
+  const paizaLang = PAIZA_LANGUAGE_IDS[lang];
+
+  if (!code.trim()) {
+    return res.status(400).json({ error: 'Nothing to run — write some code first.' });
+  }
+  if (code.length > 20000) {
+    return res.status(400).json({ error: 'Code is too long to run (max 20,000 characters).' });
+  }
+  if (!paizaLang) {
+    return res.status(400).json({
+      error: lang === 'typescript'
+        ? "TypeScript can't be run directly — try JavaScript instead."
+        : 'Pick a specific language (not Auto-detect) before running.'
+    });
+  }
+
+  try {
+    const createRes = await fetch(`${PAIZA_API_URL}/runners/create`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        source_code: code,
+        language:    paizaLang,
+        input:       stdin,
+        api_key:     PAIZA_API_KEY,
+      }),
+    });
+
+    if (!createRes.ok) {
+      console.error('/execute paiza create error:', createRes.status, await createRes.text().catch(() => ''));
+      return res.status(502).json({ error: 'Could not reach the code execution service. Please try again.' });
+    }
+
+    const created = await createRes.json();
+    if (!created?.id) {
+      return res.status(502).json({ error: 'Code execution service did not accept the submission. Please try again.' });
+    }
+
+    // paiza.io's run is async — poll get_details until status flips to
+    // "completed". Its own execution cap is only ~2s, so a handful of
+    // short polls is plenty; this just bounds total wait time.
+    let result = null;
+    for (let i = 0; i < 10; i++) {
+      await sleep(700);
+      const detailsRes = await fetch(
+        `${PAIZA_API_URL}/runners/get_details?id=${encodeURIComponent(created.id)}&api_key=${PAIZA_API_KEY}`
+      );
+      if (!detailsRes.ok) continue;
+      const details = await detailsRes.json();
+      if (details?.status === 'completed') { result = details; break; }
+    }
+
+    if (!result) {
+      return res.status(504).json({ error: 'Code execution timed out. Please try again.' });
+    }
+
+    res.json({
+      status:        result.result === 'success'  ? 'Accepted'
+                    : result.result === 'timeout'  ? 'Time Limit Exceeded'
+                    : 'Runtime Error',
+      statusId:      result.result === 'success' ? 3 : null,
+      stdout:        result.stdout || '',
+      stderr:        result.stderr || '',
+      compileOutput: result.build_stderr || '',
+      time:          result.time,
+      memory:        result.memory ? Math.round(Number(result.memory) / 1024) : undefined, // bytes → KB
+    });
+  } catch (err) {
+    console.error('/execute error:', err.message);
+    res.status(500).json({ error: 'Could not run the code. Please try again.' });
+  }
+});
+
+// ══════════════════════════════════════════════
 // BUG REPORT ROUTES
 // ══════════════════════════════════════════════
 

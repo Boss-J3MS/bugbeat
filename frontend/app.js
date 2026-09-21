@@ -268,6 +268,12 @@ fetchNotifications();
 // ── DOM refs ───────────────────────────────────
 const langSelect     = document.getElementById('lang-select');
 const analyzeBtn     = document.getElementById('analyze-btn');
+const runBtn         = document.getElementById('run-btn');
+const outputPanel    = document.getElementById('output-panel');
+const outputBody     = document.getElementById('output-body');
+const outputStatus   = document.getElementById('output-status');
+const outputMeta     = document.getElementById('output-meta');
+const outputCloseBtn = document.getElementById('output-close-btn');
 const clearBtn       = document.getElementById('clear-btn');
 const demoSelect     = document.getElementById('demo-select');
 const lineCount      = document.getElementById('line-count');
@@ -914,6 +920,109 @@ async function analyzeWithBackend(code, lang) {
 }
 
 // ═══════════════════════════════════════════════
+// RUN / OUTPUT PANEL (code execution via paiza.io's free guest runner)
+// ═══════════════════════════════════════════════
+// TypeScript isn't offered by paiza.io's guest runner, so it's left out
+// here (and on the backend) — Run shows a specific message for it below.
+const RUNNABLE_LANGS = new Set(['javascript', 'python', 'java', 'cpp', 'rust', 'go']);
+
+function escOutputHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+function showOutputPanel()  { outputPanel.hidden = false; }
+function closeOutputPanel() { outputPanel.hidden = true; }
+
+function renderOutputLoading() {
+  outputStatus.textContent = '…';
+  outputStatus.className = 'cb-badge';
+  outputMeta.textContent = '';
+  outputBody.innerHTML = `
+    <div class="cb-empty-state">
+      <span class="cb-empty-state__icon">⏳</span>
+      <span>Running…</span>
+    </div>`;
+}
+
+function renderOutputError(message) {
+  outputStatus.textContent = 'Error';
+  outputStatus.className = 'cb-badge cb-badge--error';
+  outputMeta.textContent = '';
+  outputBody.innerHTML = `<div class="cb-output-block__text cb-output-block__text--stderr">${escOutputHtml(message)}</div>`;
+}
+
+function renderOutputResult(result) {
+  const ok = result.statusId === 3; // 3 = success (matches the backend's Accepted mapping)
+  outputStatus.textContent = result.status || 'Done';
+  outputStatus.className = 'cb-badge ' + (ok ? 'cb-badge--ok' : 'cb-badge--error');
+
+  const metaParts = [];
+  if (result.time)   metaParts.push(`${result.time}s`);
+  if (result.memory) metaParts.push(`${Math.round(result.memory / 1024)}MB`);
+  outputMeta.textContent = metaParts.join(' · ');
+
+  const blocks = [];
+  if (result.compileOutput?.trim()) {
+    blocks.push(`<div><div class="cb-output-block__label">Compile output</div>
+      <div class="cb-output-block__text cb-output-block__text--stderr">${escOutputHtml(result.compileOutput)}</div></div>`);
+  }
+  if (result.stdout?.trim()) {
+    blocks.push(`<div><div class="cb-output-block__label">stdout</div>
+      <div class="cb-output-block__text">${escOutputHtml(result.stdout)}</div></div>`);
+  }
+  if (result.stderr?.trim()) {
+    blocks.push(`<div><div class="cb-output-block__label">stderr</div>
+      <div class="cb-output-block__text cb-output-block__text--stderr">${escOutputHtml(result.stderr)}</div></div>`);
+  }
+  if (!blocks.length) {
+    blocks.push(`<div class="cb-empty-state"><span class="cb-empty-state__icon">✓</span><span>Ran with no output</span></div>`);
+  }
+  outputBody.innerHTML = blocks.join('');
+}
+
+if (runBtn) {
+  runBtn.addEventListener('click', async () => {
+    const code = getCode();
+    const lang = langSelect.value;
+
+    if (!RUNNABLE_LANGS.has(lang)) {
+      showOutputPanel();
+      renderOutputError(
+        lang === 'typescript'
+          ? "TypeScript can't be run directly — try JavaScript instead."
+          : 'Pick a specific language (not Auto-detect) before running.'
+      );
+      return;
+    }
+
+    showOutputPanel();
+    renderOutputLoading();
+    runBtn.disabled = true;
+    runBtn.innerHTML = '<span class="cb-btn__icon">⏳</span> Running…';
+
+    try {
+      const res = await fetch(`${BACKEND_URL}/execute`, {
+        method:  'POST',
+        headers: authHeaders(),
+        body:    JSON.stringify({ code, lang })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
+      renderOutputResult(data);
+    } catch (err) {
+      renderOutputError(err.message || 'Could not run the code. Try again.');
+    } finally {
+      runBtn.disabled = getCode().trim().length === 0;
+      runBtn.innerHTML = '<span class="cb-btn__icon">▶</span> Run';
+    }
+  });
+}
+
+if (outputCloseBtn) outputCloseBtn.addEventListener('click', closeOutputPanel);
+
+// ═══════════════════════════════════════════════
 // ML COMPLEXITY (RF + NN + CodeBERT ensemble)
 // ═══════════════════════════════════════════════
 // Calls the /complexity route, which the Node backend proxies to the
@@ -1157,7 +1266,9 @@ console.log(fetchUserOrders(42))`}
 // UTILS
 // ═══════════════════════════════════════════════
 function updateAnalyzeBtn() {
-  analyzeBtn.disabled = getCode().trim().length === 0;
+  const empty = getCode().trim().length === 0;
+  analyzeBtn.disabled = empty;
+  if (runBtn) runBtn.disabled = empty;
 }
 
 if (clearBtn) {
