@@ -29,6 +29,7 @@
       <button class="admin-nav__btn active" data-tab="stats">📊 Stats</button>
       <button class="admin-nav__btn" data-tab="users">👥 Users</button>
       <button class="admin-nav__btn" data-tab="analyses">📋 Analyses</button>
+      <button class="admin-nav__btn" data-tab="bugreports">🐛 Bug Reports</button>
     </nav>
     <div class="cb-user-info">
       <span id="user-greeting" class="cb-user-greeting"></span>
@@ -121,6 +122,26 @@
             </tr>
           </thead>
           <tbody id="analyses-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── BUG REPORTS TAB ───────────────────── -->
+    <div id="tab-bugreports" class="admin-tab">
+      <h2 class="admin-section-title">Bug Reports</h2>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Reporter</th>
+              <th>Description</th>
+              <th>Page</th>
+              <th>Date</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="bugreports-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -339,6 +360,38 @@
         </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No analyses yet</td></tr>';
     }
 
+    // ── Load bug reports ───────────────────────
+    async function loadBugReports() {
+      const res  = await fetch(`${BACKEND_URL}/admin/bug-reports`, { headers: authHeaders() });
+      const data = await res.json();
+      const STATUS_LABELS = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
+      document.getElementById('bugreports-tbody').innerHTML = (data.bug_reports || []).map(b => `
+        <tr>
+          <td>${esc(b.id)}</td>
+          <td>${esc(b.username)}</td>
+          <td class="admin-bugreport-desc" title="${esc(b.description)}">${esc(b.description)}</td>
+          <td>${esc(b.page_context || '—')}</td>
+          <td>${formatDate(b.created_at)}</td>
+          <td>
+            <select class="cb-select admin-btn-sm" data-action="bugreport-status" data-id="${esc(b.id)}">
+              ${Object.entries(STATUS_LABELS).map(([val, label]) =>
+                `<option value="${val}" ${b.status === val ? 'selected' : ''}>${label}</option>`
+              ).join('')}
+            </select>
+          </td>
+        </tr>`).join('') || '<tr><td colspan="6" class="admin-empty">No bug reports yet</td></tr>';
+    }
+
+    document.getElementById('bugreports-tbody').addEventListener('change', async e => {
+      const sel = e.target.closest('select[data-action="bugreport-status"]');
+      if (!sel) return;
+      await fetch(`${BACKEND_URL}/admin/bug-reports/${sel.dataset.id}/status`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ status: sel.value })
+      });
+    });
+
     function formatDate(d) {
       return d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     }
@@ -347,6 +400,7 @@
     loadStats();
     loadUsers();
     loadAnalyses();
+    loadBugReports();
   </script>
   <script src="theme.js"></script>
 

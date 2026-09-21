@@ -316,6 +316,28 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════
+       BUG REPORT — floating button + modal
+  ═══════════════════════════════════════════ -->
+  <button id="bugreport-fab" class="cb-bugreport-fab" title="Report a bug" aria-label="Report a bug">🐛</button>
+
+  <div id="bugreport-modal" class="cb-bugreport-modal" hidden role="dialog" aria-label="Report a bug" aria-modal="true">
+    <div class="cb-bugreport-modal__box">
+      <div class="cb-bugreport-modal__header">
+        <span class="cb-bugreport-modal__title">Report a Bug</span>
+        <button id="bugreport-close-btn" class="cb-btn cb-btn--ghost" title="Close">✕</button>
+      </div>
+      <p class="cb-bugreport-modal__hint">Found something broken? Describe what happened and we'll take a look.</p>
+      <textarea id="bugreport-description" class="cb-bugreport-modal__textarea"
+                placeholder="What went wrong? What were you doing when it happened?" maxlength="2000"></textarea>
+      <div id="bugreport-msg" class="cb-bugreport-modal__msg" hidden></div>
+      <div class="cb-bugreport-modal__actions">
+        <button id="bugreport-submit-btn" class="cb-btn cb-btn--primary">Submit Report</button>
+        <button id="bugreport-cancel-btn" class="cb-btn cb-btn--ghost">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 

@@ -56,6 +56,75 @@ function authHeaders() {
   };
 }
 
+// ── Bug report ───────────────────────────────────
+const bugreportFab      = document.getElementById('bugreport-fab');
+const bugreportModal    = document.getElementById('bugreport-modal');
+const bugreportClose    = document.getElementById('bugreport-close-btn');
+const bugreportCancel   = document.getElementById('bugreport-cancel-btn');
+const bugreportSubmit   = document.getElementById('bugreport-submit-btn');
+const bugreportTextarea = document.getElementById('bugreport-description');
+const bugreportMsg      = document.getElementById('bugreport-msg');
+
+function openBugReportModal() {
+  if (!bugreportModal) return;
+  bugreportTextarea.value = '';
+  bugreportMsg.hidden = true;
+  bugreportMsg.className = 'cb-bugreport-modal__msg';
+  bugreportModal.hidden = false;
+  bugreportTextarea.focus();
+}
+
+function closeBugReportModal() {
+  if (bugreportModal) bugreportModal.hidden = true;
+}
+
+if (bugreportFab)    bugreportFab.addEventListener('click', openBugReportModal);
+if (bugreportClose)  bugreportClose.addEventListener('click', closeBugReportModal);
+if (bugreportCancel) bugreportCancel.addEventListener('click', closeBugReportModal);
+if (bugreportModal) {
+  // Click on the dark overlay (outside the box) also closes it
+  bugreportModal.addEventListener('click', e => {
+    if (e.target === bugreportModal) closeBugReportModal();
+  });
+}
+
+if (bugreportSubmit) {
+  bugreportSubmit.addEventListener('click', async () => {
+    const description = bugreportTextarea.value.trim();
+    if (!description) {
+      bugreportMsg.textContent = 'Please describe the bug before submitting.';
+      bugreportMsg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--error';
+      bugreportMsg.hidden = false;
+      return;
+    }
+
+    bugreportSubmit.disabled    = true;
+    bugreportSubmit.textContent = 'Submitting…';
+
+    try {
+      const res  = await fetch(`${BACKEND_URL}/bug-reports`, {
+        method  : 'POST',
+        headers : authHeaders(),
+        body    : JSON.stringify({ description, page_context: window.location.pathname })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Could not submit bug report.');
+
+      bugreportMsg.textContent = data.message || 'Thanks — your bug report has been submitted.';
+      bugreportMsg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--success';
+      bugreportMsg.hidden = false;
+      setTimeout(closeBugReportModal, 1500);
+    } catch (err) {
+      bugreportMsg.textContent = err.message;
+      bugreportMsg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--error';
+      bugreportMsg.hidden = false;
+    } finally {
+      bugreportSubmit.disabled    = false;
+      bugreportSubmit.textContent = 'Submit Report';
+    }
+  });
+}
+
 // ── Notifications ───────────────────────────────
 // GET /notifications, PATCH /notifications/:id/read and PATCH
 // /notifications/read-all already existed on the backend (a signup and

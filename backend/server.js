@@ -1030,6 +1030,34 @@ app.patch('/notifications/:id/read', requireAuth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════
+// BUG REPORT ROUTES
+// ══════════════════════════════════════════════
+
+// ── POST /bug-reports ──────────────────────────
+app.post('/bug-reports', requireAuth, async (req, res) => {
+  const description = String(req.body?.description || '').trim();
+  const pageContext = String(req.body?.page_context || '').slice(0, 255);
+
+  if (!description) {
+    return res.status(400).json({ error: 'Please describe the bug before submitting.' });
+  }
+  if (description.length > 2000) {
+    return res.status(400).json({ error: 'Description is too long (max 2000 characters).' });
+  }
+
+  try {
+    await db.query(
+      `INSERT INTO bug_reports (user_id, description, page_context) VALUES (?, ?, ?)`,
+      [req.user.userId, description, pageContext || null]
+    );
+    res.status(201).json({ message: 'Thanks — your bug report has been submitted.' });
+  } catch (err) {
+    console.error('/bug-reports error:', err.message);
+    res.status(500).json({ error: 'Could not submit bug report. Please try again.' });
+  }
+});
+
+// ══════════════════════════════════════════════
 // ADMIN ROUTES
 // ══════════════════════════════════════════════
 
@@ -1156,6 +1184,39 @@ app.get('/admin/analyses', requireAdmin, async (req, res) => {
     res.json({ analyses: rows });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch analyses.' });
+  }
+});
+
+// ── GET /admin/bug-reports ─────────────────────
+app.get('/admin/bug-reports', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(`
+      SELECT b.id, u.username, b.description, b.page_context, b.status, b.created_at
+      FROM bug_reports b
+      JOIN users u ON u.id = b.user_id
+      ORDER BY b.created_at DESC
+      LIMIT 200
+    `);
+    res.json({ bug_reports: rows });
+  } catch (err) {
+    console.error('/admin/bug-reports error:', err.message);
+    res.status(500).json({ error: 'Could not fetch bug reports.' });
+  }
+});
+
+// ── PATCH /admin/bug-reports/:id/status ────────
+const VALID_BUG_STATUSES = new Set(['open', 'in_progress', 'resolved']);
+app.patch('/admin/bug-reports/:id/status', requireAdmin, async (req, res) => {
+  const { status } = req.body;
+  const { id }      = req.params;
+  if (!VALID_BUG_STATUSES.has(status)) {
+    return res.status(400).json({ error: 'Invalid status.' });
+  }
+  try {
+    await db.query('UPDATE bug_reports SET status = ? WHERE id = ?', [status, id]);
+    res.json({ message: 'Status updated.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Could not update status.' });
   }
 });
 
