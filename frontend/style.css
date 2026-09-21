@@ -927,3 +927,104 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 @media (prefers-reduced-motion: reduce) {
   .cb-beat, .cb-progress__fill { transition: none; }
 }
+
+/* ═══════════════════════════════════════════════
+   BUG REPORT — floating button + modal
+═══════════════════════════════════════════════ */
+.cb-bugreport-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--on-accent);
+  border: none;
+  font-size: 1.4rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 14px #00000055;
+  z-index: 900;
+  transition: transform 0.15s, background 0.15s;
+}
+.cb-bugreport-fab:hover { background: var(--accent-hover); transform: scale(1.08); }
+.cb-bugreport-fab:active { transform: scale(0.96); }
+
+.cb-bugreport-modal {
+  position: fixed;
+  inset: 0;
+  background: #00000088;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+.cb-bugreport-modal[hidden] { display: none !important; }
+
+.cb-bugreport-modal__box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  max-width: 420px;
+  width: 100%;
+}
+
+.cb-bugreport-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.cb-bugreport-modal__title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cb-bugreport-modal__hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+  line-height: 1.4;
+}
+
+.cb-bugreport-modal__textarea {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  padding: 0.6rem 0.7rem;
+  margin-bottom: 0.75rem;
+}
+.cb-bugreport-modal__textarea:focus { outline: none; border-color: var(--accent); }
+
+.cb-bugreport-modal__msg {
+  font-size: 0.8rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  margin-bottom: 0.75rem;
+}
+.cb-bugreport-modal__msg[hidden] { display: none; }
+.cb-bugreport-modal__msg--error   { background: var(--error-bg); color: var(--status-error-text); }
+.cb-bugreport-modal__msg--success { background: var(--clean-bg); color: var(--status-success-text); }
+
+.cb-bugreport-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .cb-bugreport-fab { right: 14px; bottom: 14px; width: 46px; height: 46px; font-size: 1.2rem; }
+}
