@@ -395,16 +395,20 @@
   border: none !important;
 }
 
-/* The actual source of the "boxed" look: Google's script wraps the iframe
-   in its own generated div (id="container-div", class like "haAclf") with
-   inline padding and a background that doesn't follow the page's theme —
-   that div, not the iframe border, is what reads as a container sitting on
-   top of the dark card. It's created at runtime by Google's script (not
-   present in our markup), so it can't be removed from the HTML — but as a
-   plain div in our own document (not inside the cross-origin iframe), its
-   background can still be overridden from here. Making it transparent lets
-   the card's own background show through instead. */
-.auth-google-btn div {
+/* The actual source of the "boxed" look: Google's script renders the real
+   button into its own div (id="container-div", class like "haAclf") that
+   it appends directly to <body> — NOT nested inside our #google-signin-btn
+   wrapper — then positions it on top of our placeholder via inline
+   position/top/left styles. That's why scoping a selector under
+   .auth-google-btn never matched it: in the actual DOM it's a sibling of
+   our whole page content, not a descendant of it. It carries inline
+   padding and a background that doesn't follow the page's theme, which is
+   what reads as a container sitting on top of the dark card. Targeting it
+   unscoped (by the id/class Google itself assigns) is the only way to
+   reach it; it's still a plain div in our own document, not inside the
+   cross-origin iframe, so its background can be overridden from here. */
+#container-div,
+.haAclf {
   background: transparent !important;
   border: none !important;
   box-shadow: none !important;
