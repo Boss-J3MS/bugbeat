@@ -29,24 +29,28 @@ const DEFAULT_CA_PATH = path.join(__dirname, 'aiven-ca.pem');
 //
 // rejectUnauthorized: false disables certificate verification entirely,
 // which defeats the point of TLS (it stops eavesdropping but not a
-// man-in-the-middle with a fake cert). DB_SSL_CA_PATH can still override
-// which CA file to use (e.g. for local testing against Aiven), but defaults
-// to the bundled aiven-ca.pem so production needs no extra configuration.
-// Falls back to the old permissive behavior only if the CA file can't be
-// read, so a missing/bad cert degrades gracefully instead of taking the DB
-// connection down outright.
+// man-in-the-middle with a fake cert). Full verification is opt-in via
+// DB_SSL_VERIFY=true (using the bundled aiven-ca.pem, or DB_SSL_CA_PATH to
+// override which file) rather than the default, because it has twice taken
+// the whole DB connection down outright in production with a
+// "self-signed certificate in certificate chain" TLS error — even with a
+// cert independently confirmed valid via OpenSSL — and that failure mode is
+// worse than running unverified while it's debugged. Toggle it on
+// deliberately once that's root-caused, not automatically on deploy.
 function buildSslConfig() {
   if (process.env.DB_SSL !== 'true') return undefined;
-  const caPath = process.env.DB_SSL_CA_PATH || DEFAULT_CA_PATH;
-  try {
-    return {
-      ca: fs.readFileSync(caPath),
-      rejectUnauthorized: true
-    };
-  } catch (err) {
-    console.warn(`[DB] Could not read CA cert at ${caPath} — connecting with TLS but WITHOUT certificate verification:`, err.message);
-    return { rejectUnauthorized: false };
+  if (process.env.DB_SSL_VERIFY === 'true') {
+    const caPath = process.env.DB_SSL_CA_PATH || DEFAULT_CA_PATH;
+    try {
+      return {
+        ca: fs.readFileSync(caPath),
+        rejectUnauthorized: true
+      };
+    } catch (err) {
+      console.warn(`[DB] Could not read CA cert at ${caPath} — connecting with TLS but WITHOUT certificate verification:`, err.message);
+    }
   }
+  return { rejectUnauthorized: false };
 }
 
 const pool = mysql.createPool({
