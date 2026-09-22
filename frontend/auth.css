@@ -353,6 +353,36 @@
 .auth-btn:hover:not(:disabled) { background: var(--accent-hover); }
 .auth-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* ── "or" divider + Google button ─────────────── */
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* Google's own rendered button (renderButton() in login.html/signup.html)
+   comes with a fixed white/outline chrome it doesn't theme through CSS —
+   this just centers it and matches the card's other controls' full width
+   and height instead of trying to reskin it. */
+.auth-google-btn {
+  display: flex;
+  justify-content: center;
+}
+.auth-google-btn > div { width: 100% !important; }
+.auth-google-btn iframe { width: 100% !important; }
+
 .auth-error {
   background: var(--critical-bg);
   border: 1px solid var(--critical);

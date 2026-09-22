@@ -6,6 +6,7 @@
 //  POST /complexity   → ML complexity analysis
 //  POST /auth/signup  → Register new user
 //  POST /auth/login   → Login + get JWT token
+//  POST /auth/google  → Login/signup via Google
 //  GET  /auth/me      → Get current user info
 //  POST /history/save → Save analysis to DB
 //  GET  /history      → Get user's analysis history
@@ -22,6 +23,7 @@ import cors        from 'cors';
 import dotenv       from 'dotenv';
 import helmet        from 'helmet';
 import rateLimit       from 'express-rate-limit';
+import { OAuth2Client } from 'google-auth-library';
 import db       from './db.js';
 import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
 
@@ -29,6 +31,16 @@ dotenv.config();
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
+
+// Google sign-in is optional — the rest of the app works fine without it,
+// so this warns rather than exits like the JWT_SECRET check does. Without
+// GOOGLE_CLIENT_ID set, /auth/google just responds 503 instead of the
+// server refusing to start.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+if (!GOOGLE_CLIENT_ID) {
+  console.warn('[auth] GOOGLE_CLIENT_ID is not set — /auth/google will be unavailable.');
+}
 // Locally this is the Python FastAPI service on your machine; once deployed,
 // set ML_SERVICE_URL to wherever it actually lives (e.g. a Hugging Face
 // Space) — otherwise the deployed backend will try to reach its own
@@ -628,7 +640,15 @@ app.post('/auth/login', authLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    const user  = rows[0];
+    const user = rows[0];
+
+    // Accounts created via Google sign-in have no password_hash — bcrypt
+    // can't compare against null, so catch this before calling it and give
+    // a clearer message than a generic failure.
+    if (!user.password_hash) {
+      return res.status(401).json({ error: 'This account uses Google sign-in. Please continue with Google instead.' });
+    }
+
     const match = await verifyPassword(password, user.password_hash);
     if (!match) {
       return res.status(401).json({ error: 'Invalid email or password.' });
@@ -671,6 +691,121 @@ app.post('/auth/login', authLimiter, async (req, res) => {
   } catch (err) {
     console.error('/auth/login error:', err.message);
     res.status(500).json({ error: 'Login failed. Please try again.' });
+  }
+});
+
+// ── POST /auth/google ───────────────────────────
+// Accepts the ID token Google's Identity Services library hands the
+// frontend after a successful "Continue with Google" flow. Verifies it
+// with Google (signature, expiry, audience === our client ID — this is
+// what actually proves the token wasn't forged), then either links it to
+// an existing password-based account with the same email, or creates a
+// new Google-only account (password_hash left NULL). Either way it issues
+// the same kind of session/JWT as regular login, so nothing downstream
+// needs to know which path a user came in through.
+app.post('/auth/google', authLimiter, async (req, res) => {
+  if (!googleClient) {
+    return res.status(503).json({ error: 'Google sign-in is not configured on this server.' });
+  }
+
+  const { credential } = req.body;
+  if (!credential) {
+    return res.status(400).json({ error: 'Missing Google credential.' });
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: GOOGLE_CLIENT_ID
+    });
+    payload = ticket.getPayload();
+  } catch (err) {
+    console.error('/auth/google verify error:', err.message);
+    return res.status(401).json({ error: 'Invalid Google credential.' });
+  }
+
+  if (!payload?.email) {
+    return res.status(400).json({ error: 'Your Google account has no email to sign in with.' });
+  }
+  if (payload.email_verified === false) {
+    return res.status(403).json({ error: 'Your Google email address is not verified.' });
+  }
+
+  const googleId = payload.sub;
+  const email    = payload.email;
+
+  try {
+    let [rows] = await db.query(
+      'SELECT id, username, email, role, password_hash FROM users WHERE google_id = ? LIMIT 1',
+      [googleId]
+    );
+
+    let user;
+    if (rows.length > 0) {
+      user = rows[0];
+    } else {
+      [rows] = await db.query(
+        'SELECT id, username, email, role, password_hash FROM users WHERE email = ? LIMIT 1',
+        [email]
+      );
+
+      if (rows.length > 0) {
+        // Existing password-based account, same email — link it rather
+        // than creating a duplicate.
+        user = rows[0];
+        await db.query('UPDATE users SET google_id = ? WHERE id = ?', [googleId, user.id]);
+      } else {
+        // First time this email has signed in at all. Derive a username
+        // from the email's local part, sanitized to the same rules
+        // /auth/signup enforces, with a numeric suffix if it collides.
+        const rawBase = email.split('@')[0].replace(/[^a-zA-Z0-9_.-]/g, '');
+        const base    = (rawBase.slice(0, 17) || 'user').padEnd(3, '0');
+        let username  = base;
+        for (let attempt = 1; attempt <= 10; attempt++) {
+          const [existing] = await db.query('SELECT id FROM users WHERE username = ?', [username]);
+          if (existing.length === 0) break;
+          const suffix = `_${attempt}`;
+          username = `${base.slice(0, 20 - suffix.length)}${suffix}`;
+        }
+
+        const [newUser] = await db.query(
+          'INSERT INTO users (username, email, password_hash, role, google_id) VALUES (?, ?, NULL, ?, ?)',
+          [username, email, 'user', googleId]
+        );
+        user = { id: newUser.insertId, username, email, role: 'user' };
+
+        await db.query(
+          `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
+          [user.id, 'Welcome to BugBeat! Submit your first code analysis to get started.', 'system']
+        );
+      }
+    }
+
+    const token = generateToken({
+      userId   : user.id,
+      email    : user.email,
+      username : user.username,
+      role     : user.role
+    });
+
+    const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    await db.query(
+      `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at) VALUES (?, ?, ?, ?, ?)`,
+      [user.id, token, req.ip || '', req.headers['user-agent'] || '', expiry]
+    );
+
+    await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+
+    res.json({
+      message: 'Login successful!',
+      token,
+      user: { id: user.id, username: user.username, email: user.email, role: user.role }
+    });
+
+  } catch (err) {
+    console.error('/auth/google error:', err.message);
+    res.status(500).json({ error: 'Google sign-in failed. Please try again.' });
   }
 });
 

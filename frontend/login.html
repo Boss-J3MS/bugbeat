@@ -50,22 +50,71 @@
         <button id="login-btn" class="auth-btn">Log in</button>
       </div>
 
+      <div class="auth-divider"><span>or</span></div>
+      <div id="google-signin-btn" class="auth-google-btn"></div>
+
       <p class="auth-switch">
         Don't have an account? <a href="signup.html">Sign up</a>
       </p>
     </div>
   </div>
 
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const BACKEND_URL =
       (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
         ? 'http://localhost:3000'
         : 'https://bugbeat.onrender.com';
 
+    const GOOGLE_CLIENT_ID = '808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com';
+
     // Redirect if already logged in
     if (localStorage.getItem('cb_token')) {
       window.location.href = 'index.html';
     }
+
+    // Shared with the password-login flow below: on success, save the
+    // token/user and redirect the same way either path finishes.
+    function onAuthSuccess(data, welcomeName) {
+      localStorage.setItem('cb_token', data.token);
+      localStorage.setItem('cb_user',  JSON.stringify(data.user));
+      const sucEl = document.getElementById('auth-success');
+      const errEl = document.getElementById('auth-error');
+      errEl.hidden = true;
+      sucEl.textContent = `Welcome${welcomeName ? ', ' + welcomeName : ''}! Redirecting…`;
+      sucEl.hidden = false;
+      setTimeout(() => window.location.href = 'index.html', 1000);
+    }
+
+    async function handleGoogleCredential(response) {
+      const errEl = document.getElementById('auth-error');
+      errEl.hidden = true;
+      try {
+        const res  = await fetch(`${BACKEND_URL}/auth/google`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ credential: response.credential })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Google sign-in failed.');
+        onAuthSuccess(data, data.user.username);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      }
+    }
+
+    window.addEventListener('load', () => {
+      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form login still works
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-btn'),
+        { theme: 'outline', size: 'large', width: 320, text: 'continue_with' }
+      );
+    });
 
     document.getElementById('login-btn').addEventListener('click', async () => {
       const email    = document.getElementById('email').value.trim();
