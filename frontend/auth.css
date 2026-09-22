@@ -372,16 +372,43 @@
   background: var(--border);
 }
 
-/* Google's own rendered button (renderButton() in login.html/signup.html)
-   comes with a fixed white/outline chrome it doesn't theme through CSS —
-   this just centers it and matches the card's other controls' full width
-   and height instead of trying to reskin it. */
+/* Google's own rendered button (the declarative g_id_signin widget in
+   login.html/signup.html) comes with a fixed white/outline chrome it
+   doesn't theme through CSS — this centers it instead of trying to reskin
+   it directly. */
 .auth-google-btn {
   display: flex;
   justify-content: center;
 }
 .auth-google-btn > div { width: 100% !important; }
 .auth-google-btn iframe { width: 100% !important; }
+
+/* Google's script renders the actual button into its own div
+   (id="container-div", class like "haAclf") appended directly to <body> —
+   NOT nested inside #google-signin-btn — then positions it on top of our
+   placeholder via inline styles. A selector scoped under .auth-google-btn
+   (like the two rules just above) never reaches it; it has to be targeted
+   unscoped. It carries inline padding and a background that doesn't follow
+   the page's theme, which is what read as a stray box sitting on the card.
+   It's still a plain div in our own document, not inside the cross-origin
+   iframe, so its background/border/padding can be overridden from here. */
+body #container-div,
+body .haAclf {
+  background: var(--bg-panel) !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Same body-appended-not-nested issue applies to the iframe itself: its
+   default browser chrome (border/focus outline) has to be targeted
+   unscoped too. */
+#container-div iframe,
+iframe[id^="gsi_"] {
+  border: none !important;
+  outline: none !important;
+}
 
 .auth-error {
   background: var(--critical-bg);

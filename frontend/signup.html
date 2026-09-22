@@ -15,7 +15,7 @@
     })();
   </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="auth.css" />
+  <link rel="stylesheet" href="auth.css?v=10" />
 </head>
 <body class="auth-page">
 
@@ -63,7 +63,22 @@
       </div>
 
       <div class="auth-divider"><span>or</span></div>
-      <div id="google-signin-btn" class="auth-google-btn"></div>
+      <div id="google-signin-btn" class="auth-google-btn">
+        <div id="g_id_onload"
+             data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
+             data-callback="handleGoogleCredential"
+             data-locale="en"
+             data-auto_prompt="false">
+        </div>
+        <div id="g_id_signin_widget"
+             class="g_id_signin"
+             data-type="standard"
+             data-theme="outline"
+             data-size="large"
+             data-text="signup_with"
+             data-locale="en">
+        </div>
+      </div>
 
       <p class="auth-switch">
         Already have an account? <a href="login.html">Log in</a>
@@ -71,7 +86,19 @@
     </div>
   </div>
 
-  <script src="https://accounts.google.com/gsi/client?hl=en" async defer></script>
+  <script>
+    // See login.html for why this runs here (synchronous, before the
+    // deferred Google script below) rather than as a renderButton() call.
+    (function () {
+      var container = document.getElementById('google-signin-btn');
+      var widget = document.getElementById('g_id_signin_widget');
+      if (container && widget) {
+        var w = Math.min(Math.floor(container.getBoundingClientRect().width), 400);
+        if (w > 0) widget.setAttribute('data-width', String(w));
+      }
+    })();
+  </script>
+  <script src="https://accounts.google.com/gsi/client" defer></script>
   <script>
     const BACKEND_URL =
       (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
@@ -114,17 +141,9 @@
       }
     }
 
-    window.addEventListener('load', () => {
-      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form signup still works
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential
-      });
-      google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', text: 'signup_with' }
-      );
-    });
+    // No initialize()/renderButton() call needed — the g_id_onload /
+    // g_id_signin_widget divs above auto-initialize from their data
+    // attributes once the deferred script loads.
 
     document.getElementById('signup-btn').addEventListener('click', async () => {
       const username = document.getElementById('username').value.trim();
