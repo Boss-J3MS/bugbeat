@@ -114,9 +114,16 @@
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleCredential
       });
+      const btnContainer = document.getElementById('google-signin-btn');
+      // Google draws this button at a fixed pixel width rather than
+      // actually stretching to fill its container, so a hardcoded number
+      // here can visibly mismatch the card's other full-width controls.
+      // Measuring the container and passing that (capped at Google's own
+      // 400px max) keeps it matched to whatever width the card ends up at.
+      const btnWidth = Math.min(btnContainer.offsetWidth, 400);
       google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', width: 320, text: 'continue_with' }
+        btnContainer,
+        { theme: 'outline', size: 'large', width: btnWidth, text: 'continue_with' }
       );
     });
 

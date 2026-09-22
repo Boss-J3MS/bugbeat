@@ -122,9 +122,14 @@
         client_id: GOOGLE_CLIENT_ID,
         callback: handleGoogleCredential
       });
+      const btnContainer = document.getElementById('google-signin-btn');
+      // See login.html for why this is measured rather than hardcoded —
+      // Google draws the button at a fixed pixel width otherwise, which can
+      // visibly mismatch the card's other full-width controls.
+      const btnWidth = Math.min(btnContainer.offsetWidth, 400);
       google.accounts.id.renderButton(
-        document.getElementById('google-signin-btn'),
-        { theme: 'outline', size: 'large', width: 320, text: 'signup_with' }
+        btnContainer,
+        { theme: 'outline', size: 'large', width: btnWidth, text: 'signup_with' }
       );
     });
 
