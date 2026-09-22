@@ -385,6 +385,16 @@
   justify-content: center;
 }
 
+/* Google renders the button inside an iframe, and browsers give iframes a
+   default 2px inset border unless a page explicitly strips it — that border
+   shows up as a rectangle noticeably bigger than the button's own shape, in
+   both light and dark mode, since it's the browser's default frame chrome,
+   not anything Google themes. Removing it here leaves only the button's own
+   drawn edge. */
+.auth-google-btn iframe {
+  border: none !important;
+}
+
 .auth-error {
   background: var(--critical-bg);
   border: 1px solid var(--critical);
