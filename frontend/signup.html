@@ -93,7 +93,12 @@
       var container = document.getElementById('google-signin-btn');
       var widget = document.getElementById('g_id_signin_widget');
       if (container && widget) {
-        var w = Math.min(Math.floor(container.getBoundingClientRect().width), 400);
+        // See login.html: Google's button wrapper adds its own ~10px
+        // horizontal padding on each side that data-width doesn't account
+        // for, so compensate here to avoid overflowing past the card edge.
+        var GOOGLE_BTN_HPAD = 20; // ~10px left + ~10px right
+        var raw = Math.floor(container.getBoundingClientRect().width);
+        var w = Math.min(raw - GOOGLE_BTN_HPAD, 400);
         if (w > 0) widget.setAttribute('data-width', String(w));
 
         // Google's "outline" button is a white/light rectangle with a grey
