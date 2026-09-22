@@ -51,7 +51,22 @@
       </div>
 
       <div class="auth-divider"><span>or</span></div>
-      <div id="google-signin-btn" class="auth-google-btn"></div>
+      <div id="google-signin-btn" class="auth-google-btn">
+        <div id="g_id_onload"
+             data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
+             data-callback="handleGoogleCredential"
+             data-locale="en"
+             data-auto_prompt="false">
+        </div>
+        <div id="g_id_signin_widget"
+             class="g_id_signin"
+             data-type="standard"
+             data-theme="outline"
+             data-size="large"
+             data-text="continue_with"
+             data-locale="en">
+        </div>
+      </div>
 
       <p class="auth-switch">
         Don't have an account? <a href="signup.html">Sign up</a>
@@ -59,7 +74,34 @@
     </div>
   </div>
 
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script>
+    // Sets data-width on the button widget above to match its container's
+    // actual rendered width, before Google's script (loaded further down,
+    // deferred) parses these data-* attributes and renders the button —
+    // Google draws it at a fixed pixel width otherwise, which can visibly
+    // mismatch the card's other full-width controls. This script is
+    // neither async nor deferred, so it runs synchronously right here,
+    // which is guaranteed to complete before any deferred script later in
+    // the page (deferred scripts always run only after the full document
+    // is parsed).
+    (function () {
+      var container = document.getElementById('google-signin-btn');
+      var widget = document.getElementById('g_id_signin_widget');
+      if (container && widget) {
+        var w = Math.min(Math.floor(container.getBoundingClientRect().width), 400);
+        if (w > 0) widget.setAttribute('data-width', String(w));
+
+        // Google's "outline" button is a white/light rectangle with a grey
+        // border — it doesn't theme to the page, so on dark mode it reads
+        // as a stray white box sitting on the dark card. Swap to Google's
+        // solid "filled_black" variant in dark mode so it blends into the
+        // card instead of standing out as its own container.
+        var pageTheme = document.documentElement.getAttribute('data-theme');
+        widget.setAttribute('data-theme', pageTheme === 'light' ? 'outline' : 'filled_black');
+      }
+    })();
+  </script>
+  <script src="https://accounts.google.com/gsi/client" defer></script>
   <script>
     const BACKEND_URL =
       (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
@@ -104,27 +146,10 @@
       }
     }
 
-    window.addEventListener('load', () => {
-      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form login still works
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential
-      });
-      const btnContainer = document.getElementById('google-signin-btn');
-      // Google draws this button at a fixed pixel width rather than
-      // actually stretching to fill its container, so a hardcoded number
-      // here can visibly mismatch the card's other full-width controls.
-      // Measuring the container and passing that (capped at Google's own
-      // 400px max) keeps it matched to whatever width the card ends up at.
-      const btnWidth = Math.min(btnContainer.offsetWidth, 400);
-      // locale here (rather than the script's ?hl= param, which turned out
-      // not to override a browser signed into a Filipino-language Google
-      // account) is what actually forces English text reliably.
-      google.accounts.id.renderButton(
-        btnContainer,
-        { theme: 'outline', size: 'large', width: btnWidth, text: 'continue_with', locale: 'en' }
-      );
-    });
+    // No initialize()/renderButton() call needed — the g_id_onload /
+    // g_id_signin_widget divs above auto-initialize from their data
+    // attributes (including the data-width the script earlier in <head>
+    // already set) once the deferred script below loads.
 
     document.getElementById('login-btn').addEventListener('click', async () => {
       const email    = document.getElementById('email').value.trim();
