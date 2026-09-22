@@ -401,6 +401,23 @@
 #container-div iframe,
 iframe[id^="gsi_"] {
   border: none !important;
+  outline: none !important;
+}
+
+/* Actually more likely the real culprit, and a different CSS property
+   entirely from everything tried above: a sharp-cornered rectangle
+   hugging a rounded element is the classic look of a browser's default
+   focus outline (outline follows the bounding box, ignoring border-radius,
+   unlike border) rather than an actual border. Google's script likely
+   calls .focus() on the button iframe/container for accessibility right
+   after rendering it, which would draw this immediately on every load
+   with no user interaction needed — matching what's been showing up in
+   every screenshot regardless of the border/background/padding fixes
+   above. Stripping outline on both the container and the iframe covers it
+   either way. */
+#container-div,
+.haAclf {
+  outline: none !important;
 }
 
 /* The actual source of the "boxed" look: Google's script renders the real
@@ -415,9 +432,13 @@ iframe[id^="gsi_"] {
    unscoped (by the id/class Google itself assigns) is the only way to
    reach it; it's still a plain div in our own document, not inside the
    cross-origin iframe, so its background can be overridden from here. */
-#container-div,
-.haAclf {
-  background: transparent !important;
+body #container-div,
+body .haAclf {
+  /* An explicit match to the card's own background, rather than
+     "transparent" — scoped under body for certainty this actually reaches
+     the element Google appends there, since it's not a descendant of
+     .auth-card in the DOM despite sitting visually on top of it. */
+  background: var(--bg-panel) !important;
   border: none !important;
   box-shadow: none !important;
   padding: 0 !important;
