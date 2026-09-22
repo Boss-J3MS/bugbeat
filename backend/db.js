@@ -7,7 +7,6 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
-import tls from 'tls';
 import { fileURLToPath } from 'url';
 dotenv.config();
 
@@ -66,42 +65,44 @@ const pool = mysql.createPool({
   ssl: buildSslConfig()
 });
 
-// ── One-time TLS diagnostic ─────────────────────
-// Full cert verification (DB_SSL_VERIFY=true) failed twice against a CA
-// file independently confirmed valid via OpenSSL, so rather than guess at
-// why, this opens its own raw TLS probe to the DB host on startup and logs
-// the actual certificate chain the server presents (subject/issuer/
-// fingerprint for each cert, leaf to root). Compare the root's fingerprint
-// here against the bundled aiven-ca.pem's — a mismatch means the wrong CA
-// was downloaded (e.g. a different project/service, or Aiven rotated it
-// since); a match means the problem is elsewhere. This is a separate
-// one-off socket — it doesn't touch the real connection pool above either
-// way, so it's safe to leave running.
-if (process.env.DB_SSL === 'true' && process.env.DB_SSL_DIAG === 'true') {
-  const sock = tls.connect(
-    { host: process.env.DB_HOST, port: Number(process.env.DB_PORT) || 3306, rejectUnauthorized: false },
-    () => {
-      const chain = [];
-      let cert = sock.getPeerCertificate(true);
-      while (cert && cert.subject) {
-        chain.push(cert);
-        if (!cert.issuerCertificate || cert.issuerCertificate.fingerprint === cert.fingerprint) break;
-        cert = cert.issuerCertificate;
-      }
-      console.log(`[DB][diag] Server presented ${chain.length} certificate(s):`);
-      chain.forEach((c, i) => {
-        console.log(`[DB][diag]   [${i}] subject=${c.subject?.CN}  issuer=${c.issuer?.CN}  fingerprint=${c.fingerprint}`);
-      });
-      sock.end();
-    }
-  );
-  sock.on('error', err => console.error('[DB][diag] TLS probe failed:', err.message));
-}
-
 // Test connection on startup
 pool.getConnection()
   .then(conn => {
     console.log('[DB] MySQL connected successfully.');
+
+    // ── One-time TLS diagnostic ─────────────────
+    // Full cert verification (DB_SSL_VERIFY=true) failed twice against a CA
+    // file independently confirmed valid via OpenSSL, so rather than guess
+    // at why, this inspects the socket this *real* connection just
+    // negotiated (MySQL upgrades a plaintext socket to TLS mid-handshake,
+    // rather than starting TLS immediately — a standalone raw tls.connect()
+    // probe tried that first and got "wrong version number" because of
+    // this, since it isn't speaking the MySQL protocol) and logs the actual
+    // certificate chain the server presented (subject/issuer/fingerprint,
+    // leaf to root). Compare the root's fingerprint against the bundled
+    // aiven-ca.pem's — a mismatch means the wrong CA was downloaded (e.g. a
+    // different project/service, or Aiven rotated it since); a match means
+    // the problem is elsewhere. Read-only inspection of the same socket —
+    // doesn't affect the connection either way.
+    if (process.env.DB_SSL_DIAG === 'true') {
+      const sock = conn.connection?.stream;
+      if (sock?.getPeerCertificate) {
+        const chain = [];
+        let cert = sock.getPeerCertificate(true);
+        while (cert && cert.subject) {
+          chain.push(cert);
+          if (!cert.issuerCertificate || cert.issuerCertificate.fingerprint === cert.fingerprint) break;
+          cert = cert.issuerCertificate;
+        }
+        console.log(`[DB][diag] Server presented ${chain.length} certificate(s):`);
+        chain.forEach((c, i) => {
+          console.log(`[DB][diag]   [${i}] subject=${c.subject?.CN}  issuer=${c.issuer?.CN}  fingerprint=${c.fingerprint}`);
+        });
+      } else {
+        console.log('[DB][diag] Connection is not using TLS (DB_SSL is off) — nothing to inspect.');
+      }
+    }
+
     conn.release();
   })
   .catch(err => {
