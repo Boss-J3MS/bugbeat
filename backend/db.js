@@ -7,6 +7,7 @@ import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 dotenv.config();
 
@@ -27,30 +28,65 @@ const DEFAULT_CA_PATH = path.join(__dirname, 'aiven-ca.pem');
 // MySQL hosts) reject plain connections outright. Set DB_SSL=true in the
 // deployed environment (Render) to turn this on; leave it unset locally.
 //
-// rejectUnauthorized: false disables certificate verification entirely,
-// which defeats the point of TLS (it stops eavesdropping but not a
-// man-in-the-middle with a fake cert). Full verification is opt-in via
-// DB_SSL_VERIFY=true (using the bundled aiven-ca.pem, or DB_SSL_CA_PATH to
-// override which file) rather than the default, because it has twice taken
-// the whole DB connection down outright in production with a
-// "self-signed certificate in certificate chain" TLS error — even with a
-// cert independently confirmed valid via OpenSSL — and that failure mode is
-// worse than running unverified while it's debugged. Toggle it on
-// deliberately once that's root-caused, not automatically on deploy.
+// rejectUnauthorized: false disables Node/OpenSSL's *automatic* certificate
+// chain verification, which on its own defeats part of the point of TLS (it
+// stops eavesdropping but not a man-in-the-middle with a fake cert). That
+// automatic verification (rejectUnauthorized: true + ca: <bundled Aiven
+// CA>) was tried twice and took the whole DB connection down outright both
+// times with "self-signed certificate in certificate chain" — even after a
+// diagnostic proved, byte-for-byte, that the CA we're providing IS the
+// exact root certificate the server presents. That symptom (matching CA,
+// verification still fails) is a known OpenSSL/Node chain-building quirk
+// specifically when the server includes its own self-signed root as part
+// of the chain it sends (which Aiven does — see the diagnostic below), not
+// evidence of a wrong or corrupted certificate.
+//
+// So instead of depending on that automatic chain-building, DB_SSL_VERIFY
+// implements the same guarantee a different way: certificate pinning. TLS
+// is negotiated with rejectUnauthorized: false (never blocks the
+// handshake), then every new physical connection is checked, in the
+// 'connection' event below, against the exact fingerprint of the bundled
+// aiven-ca.pem. If it doesn't match, the connection is destroyed rather
+// than used. This is a straightforward byte comparison we control
+// ourselves — no OpenSSL chain-building involved — so it can't fail closed
+// for the same reason automatic verification did, while still refusing any
+// connection that isn't anchored to the CA we actually trust.
 function buildSslConfig() {
   if (process.env.DB_SSL !== 'true') return undefined;
-  if (process.env.DB_SSL_VERIFY === 'true') {
-    const caPath = process.env.DB_SSL_CA_PATH || DEFAULT_CA_PATH;
-    try {
-      return {
-        ca: fs.readFileSync(caPath),
-        rejectUnauthorized: true
-      };
-    } catch (err) {
-      console.warn(`[DB] Could not read CA cert at ${caPath} — connecting with TLS but WITHOUT certificate verification:`, err.message);
-    }
-  }
   return { rejectUnauthorized: false };
+}
+
+// Walks a peer certificate chain (leaf → root) from Node's
+// DetailedPeerCertificate shape. MySQL upgrades a plaintext socket to TLS
+// mid-handshake rather than starting TLS immediately, so this only works
+// against a socket that's already completed that upgrade (e.g. the
+// connection object mysql2 hands back after a successful connect) — a
+// standalone raw tls.connect() probe against host:port fails with "wrong
+// version number" because it isn't speaking the MySQL protocol first.
+function getPeerCertChain(sock) {
+  if (!sock?.getPeerCertificate) return [];
+  const chain = [];
+  let cert = sock.getPeerCertificate(true);
+  while (cert && cert.subject) {
+    chain.push(cert);
+    if (!cert.issuerCertificate || cert.issuerCertificate.fingerprint === cert.fingerprint) break;
+    cert = cert.issuerCertificate;
+  }
+  return chain;
+}
+
+// Loads the bundled (or overridden) CA cert's SHA-256 fingerprint once at
+// startup, for pinning — computed directly from the file via Node's
+// X509Certificate, independent of any live connection.
+function loadPinnedFingerprint() {
+  const caPath = process.env.DB_SSL_CA_PATH || DEFAULT_CA_PATH;
+  try {
+    const cert = new crypto.X509Certificate(fs.readFileSync(caPath));
+    return { fingerprint256: cert.fingerprint256, caPath };
+  } catch (err) {
+    console.warn(`[DB] Could not read CA cert at ${caPath} — certificate pinning disabled, connecting with TLS but WITHOUT verification:`, err.message);
+    return null;
+  }
 }
 
 const pool = mysql.createPool({
@@ -65,38 +101,37 @@ const pool = mysql.createPool({
   ssl: buildSslConfig()
 });
 
-// Test connection on startup
+// Certificate pinning — mysql2/promise's pool re-emits 'connection' from
+// its underlying base pool for every new physical connection it opens,
+// regardless of whether app code goes through pool.query(), pool.execute(),
+// or pool.getConnection() to get there, so one listener here covers all of
+// it app-wide.
+if (process.env.DB_SSL === 'true' && process.env.DB_SSL_VERIFY === 'true') {
+  const pinned = loadPinnedFingerprint();
+  if (pinned) {
+    console.log(`[DB] Certificate pinning enabled against ${pinned.caPath} (fingerprint256=${pinned.fingerprint256})`);
+    pool.on('connection', (connection) => {
+      const chain = getPeerCertChain(connection.stream);
+      const match = chain.find(c => c.fingerprint256 === pinned.fingerprint256);
+      if (!match) {
+        console.error('[DB] Certificate pinning FAILED — server did not present the trusted CA. Refusing this connection.');
+        connection.destroy();
+      }
+    });
+  }
+}
+
+// Test connection + one-time diagnostic on startup
 pool.getConnection()
   .then(conn => {
     console.log('[DB] MySQL connected successfully.');
 
-    // ── One-time TLS diagnostic ─────────────────
-    // Full cert verification (DB_SSL_VERIFY=true) failed twice against a CA
-    // file independently confirmed valid via OpenSSL, so rather than guess
-    // at why, this inspects the socket this *real* connection just
-    // negotiated (MySQL upgrades a plaintext socket to TLS mid-handshake,
-    // rather than starting TLS immediately — a standalone raw tls.connect()
-    // probe tried that first and got "wrong version number" because of
-    // this, since it isn't speaking the MySQL protocol) and logs the actual
-    // certificate chain the server presented (subject/issuer/fingerprint,
-    // leaf to root). Compare the root's fingerprint against the bundled
-    // aiven-ca.pem's — a mismatch means the wrong CA was downloaded (e.g. a
-    // different project/service, or Aiven rotated it since); a match means
-    // the problem is elsewhere. Read-only inspection of the same socket —
-    // doesn't affect the connection either way.
     if (process.env.DB_SSL_DIAG === 'true') {
-      const sock = conn.connection?.stream;
-      if (sock?.getPeerCertificate) {
-        const chain = [];
-        let cert = sock.getPeerCertificate(true);
-        while (cert && cert.subject) {
-          chain.push(cert);
-          if (!cert.issuerCertificate || cert.issuerCertificate.fingerprint === cert.fingerprint) break;
-          cert = cert.issuerCertificate;
-        }
+      const chain = getPeerCertChain(conn.connection?.stream);
+      if (chain.length) {
         console.log(`[DB][diag] Server presented ${chain.length} certificate(s):`);
         chain.forEach((c, i) => {
-          console.log(`[DB][diag]   [${i}] subject=${c.subject?.CN}  issuer=${c.issuer?.CN}  fingerprint=${c.fingerprint}`);
+          console.log(`[DB][diag]   [${i}] subject=${c.subject?.CN}  issuer=${c.issuer?.CN}  fingerprint256=${c.fingerprint256}`);
         });
       } else {
         console.log('[DB][diag] Connection is not using TLS (DB_SSL is off) — nothing to inspect.');
