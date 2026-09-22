@@ -72,6 +72,9 @@
       <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
         <span class="cb-btn__icon">▶</span> Analyze
       </button>
+      <button id="run-btn" class="cb-btn cb-btn--ghost" disabled title="Run the code and show its output">
+        <span class="cb-btn__icon">▶</span> Run
+      </button>
       <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
       <div class="cb-user-info" id="user-info">
         <span id="user-greeting" class="cb-user-greeting"></span>
@@ -191,6 +194,22 @@
         <div class="cb-stat cb-stat--critical">
           <span class="cb-stat__num" id="stat-critical">—</span>
           <span class="cb-stat__label">Critical</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- PANEL 5: Output / Console -->
+    <section class="cb-panel cb-panel--output" id="output-panel" aria-label="Program Output" hidden>
+      <div class="cb-panel__header">
+        <span class="cb-panel__title">Output</span>
+        <span id="output-status" class="cb-badge">—</span>
+        <span id="output-meta" class="cb-meta"></span>
+        <button id="output-close-btn" class="cb-btn cb-btn--ghost" title="Close output">✕</button>
+      </div>
+      <div id="output-body" class="cb-output-body">
+        <div class="cb-empty-state">
+          <span class="cb-empty-state__icon">▶</span>
+          <span>Run the code to see its output here</span>
         </div>
       </div>
     </section>
