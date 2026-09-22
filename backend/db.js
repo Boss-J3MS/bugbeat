@@ -80,11 +80,21 @@ function getPeerCertChain(sock) {
 // X509Certificate, independent of any live connection.
 function loadPinnedFingerprint() {
   const caPath = process.env.DB_SSL_CA_PATH || DEFAULT_CA_PATH;
+  let raw;
   try {
-    const cert = new crypto.X509Certificate(fs.readFileSync(caPath));
-    return { fingerprint256: cert.fingerprint256, caPath };
+    raw = fs.readFileSync(caPath);
   } catch (err) {
     console.warn(`[DB] Could not read CA cert at ${caPath} — certificate pinning disabled, connecting with TLS but WITHOUT verification:`, err.message);
+    return null;
+  }
+  if (process.env.DB_SSL_DIAG === 'true') {
+    console.log(`[DB][diag] Read ${raw.length} bytes from ${caPath} — first 20 bytes (hex): ${raw.subarray(0, 20).toString('hex')} — first line: ${JSON.stringify(raw.toString('utf8', 0, 40))}`);
+  }
+  try {
+    const cert = new crypto.X509Certificate(raw);
+    return { fingerprint256: cert.fingerprint256, caPath };
+  } catch (err) {
+    console.warn(`[DB] Could not parse CA cert at ${caPath} — certificate pinning disabled, connecting with TLS but WITHOUT verification:`, err.message);
     return null;
   }
 }
