@@ -15,7 +15,7 @@
     })();
   </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="auth.css?v=6" />
+  <link rel="stylesheet" href="auth.css?v=7" />
 </head>
 <body class="auth-page">
 
@@ -100,13 +100,10 @@
         var w = Math.min(raw - GOOGLE_BTN_HPAD, 400);
         if (w > 0) widget.setAttribute('data-width', String(w));
 
-        // Google's "outline" button is a white/light rectangle with a grey
-        // border — it doesn't theme to the page, so on dark mode it reads
-        // as a stray white box sitting on the dark card. Swap to Google's
-        // solid "filled_black" variant in dark mode so it blends into the
-        // card instead of standing out as its own container.
-        var pageTheme = document.documentElement.getAttribute('data-theme');
-        widget.setAttribute('data-theme', pageTheme === 'light' ? 'outline' : 'filled_black');
+        // Always use Google's white "outline" button regardless of page
+        // theme (previously swapped to "filled_black" in dark mode — no
+        // longer wanted).
+        widget.setAttribute('data-theme', 'outline');
       }
     })();
   </script>
