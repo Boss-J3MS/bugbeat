@@ -15,7 +15,7 @@
     })();
   </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="auth.css?v=8" />
+  <link rel="stylesheet" href="auth.css" />
 </head>
 <body class="auth-page">
 
@@ -51,22 +51,7 @@
       </div>
 
       <div class="auth-divider"><span>or</span></div>
-      <div id="google-signin-btn" class="auth-google-btn">
-        <div id="g_id_onload"
-             data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
-             data-callback="handleGoogleCredential"
-             data-locale="en"
-             data-auto_prompt="false">
-        </div>
-        <div id="g_id_signin_widget"
-             class="g_id_signin"
-             data-type="standard"
-             data-theme="outline"
-             data-size="large"
-             data-text="continue_with"
-             data-locale="en">
-        </div>
-      </div>
+      <div id="google-signin-btn" class="auth-google-btn"></div>
 
       <p class="auth-switch">
         Don't have an account? <a href="signup.html">Sign up</a>
@@ -74,40 +59,7 @@
     </div>
   </div>
 
-  <script>
-    // Sets data-width on the button widget above to match its container's
-    // actual rendered width, before Google's script (loaded further down,
-    // deferred) parses these data-* attributes and renders the button —
-    // Google draws it at a fixed pixel width otherwise, which can visibly
-    // mismatch the card's other full-width controls. This script is
-    // neither async nor deferred, so it runs synchronously right here,
-    // which is guaranteed to complete before any deferred script later in
-    // the page (deferred scripts always run only after the full document
-    // is parsed).
-    (function () {
-      var container = document.getElementById('google-signin-btn');
-      var widget = document.getElementById('g_id_signin_widget');
-      if (container && widget) {
-        // Google's rendered button sits inside its own wrapper (the
-        // "container-div"/"haAclf" div it appends to <body>) which carries
-        // ~10px of horizontal padding on each side that data-width doesn't
-        // account for — so asking for our full placeholder width draws a
-        // button ~20px wider than that placeholder, overflowing past the
-        // card edge. Subtracting that padding here keeps the actual
-        // rendered button (padding included) within our intended width.
-        var GOOGLE_BTN_HPAD = 20; // ~10px left + ~10px right
-        var raw = Math.floor(container.getBoundingClientRect().width);
-        var w = Math.min(raw - GOOGLE_BTN_HPAD, 400);
-        if (w > 0) widget.setAttribute('data-width', String(w));
-
-        // Always use Google's white "outline" button regardless of page
-        // theme (previously swapped to "filled_black" in dark mode — no
-        // longer wanted).
-        widget.setAttribute('data-theme', 'outline');
-      }
-    })();
-  </script>
-  <script src="https://accounts.google.com/gsi/client" defer></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script>
     const BACKEND_URL =
       (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
@@ -152,10 +104,17 @@
       }
     }
 
-    // No initialize()/renderButton() call needed — the g_id_onload /
-    // g_id_signin_widget divs above auto-initialize from their data
-    // attributes (including the data-width the script earlier in <head>
-    // already set) once the deferred script below loads.
+    window.addEventListener('load', () => {
+      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form login still works
+      google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential
+      });
+      google.accounts.id.renderButton(
+        document.getElementById('google-signin-btn'),
+        { theme: 'outline', size: 'large', width: 320, text: 'continue_with' }
+      );
+    });
 
     document.getElementById('login-btn').addEventListener('click', async () => {
       const email    = document.getElementById('email').value.trim();

@@ -372,77 +372,16 @@
   background: var(--border);
 }
 
-/* Google's own rendered button (the g_id_signin widget in
-   login.html/signup.html) comes with a fixed white/outline chrome it
-   doesn't theme through CSS, and it draws itself at a fixed pixel width
-   (data-width) rather than actually stretching to fill a wider container —
-   forcing the iframe itself to 100% doesn't help, since the button drawn
-   inside stays anchored at its own width regardless. Centering it is the
-   simplest way to avoid a lopsided gap next to the card's other
-   full-width controls. */
+/* Google's own rendered button (renderButton() in login.html/signup.html)
+   comes with a fixed white/outline chrome it doesn't theme through CSS —
+   this just centers it and matches the card's other controls' full width
+   and height instead of trying to reskin it. */
 .auth-google-btn {
   display: flex;
   justify-content: center;
 }
-
-/* Google renders the button inside an iframe, and browsers give iframes a
-   default 2px inset border unless a page explicitly strips it — that border
-   shows up as a rectangle noticeably bigger than the button's own shape, in
-   both light and dark mode, since it's the browser's default frame chrome,
-   not anything Google themes. Removing it here leaves only the button's own
-   drawn edge.
-
-   Like #container-div below, this iframe is appended by Google's script
-   directly under <body> rather than nested inside #google-signin-btn, so a
-   selector scoped under .auth-google-btn (as this rule originally was)
-   never actually matched it — that's why the border kept showing up even
-   after this rule existed. Targeting the iframe unscoped is what actually
-   reaches it. */
-#container-div iframe,
-iframe[id^="gsi_"] {
-  border: none !important;
-  outline: none !important;
-}
-
-/* Actually more likely the real culprit, and a different CSS property
-   entirely from everything tried above: a sharp-cornered rectangle
-   hugging a rounded element is the classic look of a browser's default
-   focus outline (outline follows the bounding box, ignoring border-radius,
-   unlike border) rather than an actual border. Google's script likely
-   calls .focus() on the button iframe/container for accessibility right
-   after rendering it, which would draw this immediately on every load
-   with no user interaction needed — matching what's been showing up in
-   every screenshot regardless of the border/background/padding fixes
-   above. Stripping outline on both the container and the iframe covers it
-   either way. */
-#container-div,
-.haAclf {
-  outline: none !important;
-}
-
-/* The actual source of the "boxed" look: Google's script renders the real
-   button into its own div (id="container-div", class like "haAclf") that
-   it appends directly to <body> — NOT nested inside our #google-signin-btn
-   wrapper — then positions it on top of our placeholder via inline
-   position/top/left styles. That's why scoping a selector under
-   .auth-google-btn never matched it: in the actual DOM it's a sibling of
-   our whole page content, not a descendant of it. It carries inline
-   padding and a background that doesn't follow the page's theme, which is
-   what reads as a container sitting on top of the dark card. Targeting it
-   unscoped (by the id/class Google itself assigns) is the only way to
-   reach it; it's still a plain div in our own document, not inside the
-   cross-origin iframe, so its background can be overridden from here. */
-body #container-div,
-body .haAclf {
-  /* An explicit match to the card's own background, rather than
-     "transparent" — scoped under body for certainty this actually reaches
-     the element Google appends there, since it's not a descendant of
-     .auth-card in the DOM despite sitting visually on top of it. */
-  background: var(--bg-panel) !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
+.auth-google-btn > div { width: 100% !important; }
+.auth-google-btn iframe { width: 100% !important; }
 
 .auth-error {
   background: var(--critical-bg);
