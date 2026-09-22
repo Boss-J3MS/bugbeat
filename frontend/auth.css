@@ -395,6 +395,21 @@
   border: none !important;
 }
 
+/* The actual source of the "boxed" look: Google's script wraps the iframe
+   in its own generated div (id="container-div", class like "haAclf") with
+   inline padding and a background that doesn't follow the page's theme —
+   that div, not the iframe border, is what reads as a container sitting on
+   top of the dark card. It's created at runtime by Google's script (not
+   present in our markup), so it can't be removed from the HTML — but as a
+   plain div in our own document (not inside the cross-origin iframe), its
+   background can still be overridden from here. Making it transparent lets
+   the card's own background show through instead. */
+.auth-google-btn div {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
 .auth-error {
   background: var(--critical-bg);
   border: 1px solid var(--critical);
