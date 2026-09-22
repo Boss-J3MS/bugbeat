@@ -380,8 +380,17 @@
   display: flex;
   justify-content: center;
 }
-.auth-google-btn > div { width: 100% !important; }
-.auth-google-btn iframe { width: 100% !important; }
+
+/* IMPORTANT: no width override here on the iframe/its wrapper divs. Google
+   deliberately renders the real button iframe OVERSIZED relative to our
+   requested data-width, with negative margins (e.g. margin: -2px -10px)
+   to crop its own internal chrome down to the intended size — a
+   self-clipping technique, confirmed via DevTools showing the iframe's own
+   inline style already sized and offset correctly on its own. Forcing
+   `width: 100% !important` on it (as a much earlier version of this rule
+   did) fights that math and breaks the clipping, which is what caused the
+   button to overflow past the card's edge. Leave Google's own sizing
+   alone; centering above is all this needs. */
 
 /* Google's script renders the actual button into its own div
    (id="container-div", class like "haAclf") appended directly to <body> —
