@@ -390,8 +390,16 @@
    shows up as a rectangle noticeably bigger than the button's own shape, in
    both light and dark mode, since it's the browser's default frame chrome,
    not anything Google themes. Removing it here leaves only the button's own
-   drawn edge. */
-.auth-google-btn iframe {
+   drawn edge.
+
+   Like #container-div below, this iframe is appended by Google's script
+   directly under <body> rather than nested inside #google-signin-btn, so a
+   selector scoped under .auth-google-btn (as this rule originally was)
+   never actually matched it — that's why the border kept showing up even
+   after this rule existed. Targeting the iframe unscoped is what actually
+   reaches it. */
+#container-div iframe,
+iframe[id^="gsi_"] {
   border: none !important;
 }
 
