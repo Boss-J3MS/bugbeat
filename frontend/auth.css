@@ -372,16 +372,18 @@
   background: var(--border);
 }
 
-/* Google's own rendered button (renderButton() in login.html/signup.html)
-   comes with a fixed white/outline chrome it doesn't theme through CSS —
-   this just centers it and matches the card's other controls' full width
-   and height instead of trying to reskin it. */
+/* Google's own rendered button (the g_id_signin widget in
+   login.html/signup.html) comes with a fixed white/outline chrome it
+   doesn't theme through CSS, and it draws itself at a fixed pixel width
+   (data-width) rather than actually stretching to fill a wider container —
+   forcing the iframe itself to 100% doesn't help, since the button drawn
+   inside stays anchored at its own width regardless. Centering it is the
+   simplest way to avoid a lopsided gap next to the card's other
+   full-width controls. */
 .auth-google-btn {
   display: flex;
   justify-content: center;
 }
-.auth-google-btn > div { width: 100% !important; }
-.auth-google-btn iframe { width: 100% !important; }
 
 .auth-error {
   background: var(--critical-bg);

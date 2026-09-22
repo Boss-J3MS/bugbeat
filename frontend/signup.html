@@ -63,7 +63,25 @@
       </div>
 
       <div class="auth-divider"><span>or</span></div>
-      <div id="google-signin-btn" class="auth-google-btn"></div>
+      <!-- Declarative widget markup — see login.html for why (data-locale
+           is an explicit attribute here, unlike the JS renderButton()
+           approach this replaces). -->
+      <div class="auth-google-btn">
+        <div id="g_id_onload"
+             data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
+             data-callback="handleGoogleCredential"
+             data-locale="en"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+             data-type="standard"
+             data-theme="outline"
+             data-size="large"
+             data-text="signup_with"
+             data-locale="en"
+             data-width="320">
+        </div>
+      </div>
 
       <p class="auth-switch">
         Already have an account? <a href="login.html">Log in</a>
@@ -116,22 +134,8 @@
       }
     }
 
-    window.addEventListener('load', () => {
-      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form signup still works
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential
-      });
-      const btnContainer = document.getElementById('google-signin-btn');
-      // See login.html for why this is measured rather than hardcoded —
-      // Google draws the button at a fixed pixel width otherwise, which can
-      // visibly mismatch the card's other full-width controls.
-      const btnWidth = Math.min(btnContainer.offsetWidth, 400);
-      google.accounts.id.renderButton(
-        btnContainer,
-        { theme: 'outline', size: 'large', width: btnWidth, text: 'signup_with' }
-      );
-    });
+    // No initialize()/renderButton() call needed — the g_id_onload /
+    // g_id_signin divs above auto-initialize from their data attributes.
 
     document.getElementById('signup-btn').addEventListener('click', async () => {
       const username = document.getElementById('username').value.trim();

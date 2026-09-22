@@ -51,7 +51,27 @@
       </div>
 
       <div class="auth-divider"><span>or</span></div>
-      <div id="google-signin-btn" class="auth-google-btn"></div>
+      <!-- Google's declarative widget markup instead of the JS-rendered
+           button — data-locale is an explicitly documented attribute here,
+           as a test against the JS renderButton() approach not respecting
+           the script's ?hl=en param for a browser signed into a
+           Filipino-language Google account. -->
+      <div class="auth-google-btn">
+        <div id="g_id_onload"
+             data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
+             data-callback="handleGoogleCredential"
+             data-locale="en"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+             data-type="standard"
+             data-theme="outline"
+             data-size="large"
+             data-text="continue_with"
+             data-locale="en"
+             data-width="320">
+        </div>
+      </div>
 
       <p class="auth-switch">
         Don't have an account? <a href="signup.html">Sign up</a>
@@ -108,24 +128,10 @@
       }
     }
 
-    window.addEventListener('load', () => {
-      if (!window.google?.accounts?.id) return; // script blocked/failed to load — form login still works
-      google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: handleGoogleCredential
-      });
-      const btnContainer = document.getElementById('google-signin-btn');
-      // Google draws this button at a fixed pixel width rather than
-      // actually stretching to fill its container, so a hardcoded number
-      // here can visibly mismatch the card's other full-width controls.
-      // Measuring the container and passing that (capped at Google's own
-      // 400px max) keeps it matched to whatever width the card ends up at.
-      const btnWidth = Math.min(btnContainer.offsetWidth, 400);
-      google.accounts.id.renderButton(
-        btnContainer,
-        { theme: 'outline', size: 'large', width: btnWidth, text: 'continue_with' }
-      );
-    });
+    // No initialize()/renderButton() call needed here — the g_id_onload /
+    // g_id_signin divs above auto-initialize themselves from their data
+    // attributes once the script below loads. handleGoogleCredential is
+    // still what data-callback points to.
 
     document.getElementById('login-btn').addEventListener('click', async () => {
       const email    = document.getElementById('email').value.trim();
