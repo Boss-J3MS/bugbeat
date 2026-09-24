@@ -397,43 +397,14 @@
   color-scheme: light;
 }
 
-/* IMPORTANT: no width override here on the iframe/its wrapper divs. Google
-   deliberately renders the real button iframe OVERSIZED relative to our
-   requested data-width, with negative margins (e.g. margin: -2px -10px)
-   to crop its own internal chrome down to the intended size — a
-   self-clipping technique, confirmed via DevTools showing the iframe's own
-   inline style already sized and offset correctly on its own. Forcing
-   `width: 100% !important` on it (as a much earlier version of this rule
-   did) fights that math and breaks the clipping, which is what caused the
-   button to overflow past the card's edge. Leave Google's own sizing
-   alone; centering above is all this needs. */
-
-/* Google's script renders the actual button into its own div
-   (id="container-div", class like "haAclf") appended directly to <body> —
-   NOT nested inside #google-signin-btn — then positions it on top of our
-   placeholder via inline styles. A selector scoped under .auth-google-btn
-   (like the two rules just above) never reaches it; it has to be targeted
-   unscoped. It carries inline padding and a background that doesn't follow
-   the page's theme, which is what read as a stray box sitting on the card.
-   It's still a plain div in our own document, not inside the cross-origin
-   iframe, so its background/border/padding can be overridden from here. */
-body #container-div,
-body .haAclf {
-  background: var(--bg-panel) !important;
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-}
-
-/* Same body-appended-not-nested issue applies to the iframe itself: its
-   default browser chrome (border/focus outline) has to be targeted
-   unscoped too. */
-#container-div iframe,
-iframe[id^="gsi_"] {
-  border: none !important;
-  outline: none !important;
-}
+/* Don't set a width on the button's iframe here. Google makes the iframe
+   20px wider than data-width and pulls it back with negative margins
+   (margin: -2px -10px) to hide its own padding. Forcing a width on it
+   breaks that and makes the button overflow the card. The width is
+   handled in google-btn.js instead.
+   Everything else about the button (its border, padding, the
+   #container-div wrapper) lives inside Google's iframe, which CSS on this
+   page can't reach, so there's nothing else to style here. */
 
 .auth-error {
   background: var(--critical-bg);
