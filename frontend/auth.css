@@ -381,6 +381,22 @@
   justify-content: center;
 }
 
+/* The white rectangle behind the button in dark mode. style.css sets
+   color-scheme: dark on :root, but Google's button page inside the iframe
+   uses a light color scheme. When an iframe's color scheme doesn't match
+   the page around it, the browser paints an opaque backdrop (white, for a
+   light-scheme frame) behind the whole iframe so its content stays
+   readable. The iframe is slightly larger than the rounded button drawn
+   inside it, so that backdrop shows up as a square white box around the
+   button. In light mode the schemes match, so the backdrop is transparent,
+   which is why light mode always looked fine.
+   Telling the browser this iframe is light-scheme too makes them match and
+   removes the backdrop. */
+.auth-google-btn,
+.auth-google-btn iframe {
+  color-scheme: light;
+}
+
 /* IMPORTANT: no width override here on the iframe/its wrapper divs. Google
    deliberately renders the real button iframe OVERSIZED relative to our
    requested data-width, with negative margins (e.g. margin: -2px -10px)
