@@ -31,12 +31,18 @@
   var widget = document.getElementById('g_id_signin_widget');
   if (!container || !widget) return;
 
-  // How long the new button must go without any further changes after its
-  // iframe loads before it's shown. Google makes one more change to the
-  // button about half a second after drawing it.
-  var SETTLE_MS = 700;
+  // How long the new button must go quiet (no DOM changes, no messages from
+  // Google's iframe) after its iframe loads before it's shown. On a slow
+  // connection Google's button can take most of a second after loading to
+  // switch from the account's language to English.
+  var SETTLE_MS = 1000;
   // Swap anyway after this long, in case the load event is missed.
-  var GIVE_UP_MS = 5000;
+  var GIVE_UP_MS = 8000;
+  // How long zooming/resizing must pause before a redraw starts. Fast
+  // zooming fires many size changes; redrawing on each one started several
+  // Google buttons loading at once, which slowed all of them down and let
+  // the last one be swapped in while it was still showing Filipino.
+  var RESIZE_PAUSE_MS = 400;
 
   // Google accepts widths from 200 to 400px.
   function fitWidth() {
@@ -62,7 +68,7 @@
   }
 
   // A redraw that's been started but not swapped in yet:
-  // { slot, width, observer, settleTimer, giveUpTimer }
+  // { slot, width, observer, settleTimer, giveUpTimer, onMessage }
   var pending = null;
 
   // The width the VISIBLE button was drawn with, or null if not drawn yet.
@@ -75,11 +81,16 @@
     return null;
   }
 
+  function stopWatching(p) {
+    p.observer.disconnect();
+    clearTimeout(p.settleTimer);
+    clearTimeout(p.giveUpTimer);
+    if (p.onMessage) window.removeEventListener('message', p.onMessage);
+  }
+
   function cancelPending() {
     if (!pending) return;
-    pending.observer.disconnect();
-    clearTimeout(pending.settleTimer);
-    clearTimeout(pending.giveUpTimer);
+    stopWatching(pending);
     if (pending.slot.parentNode) pending.slot.parentNode.removeChild(pending.slot);
     pending = null;
   }
@@ -88,9 +99,7 @@
   // is not moved (moving an iframe reloads it), only un-hidden in place.
   function swapIn(p) {
     if (pending !== p) return;
-    pending.observer.disconnect();
-    clearTimeout(pending.settleTimer);
-    clearTimeout(pending.giveUpTimer);
+    stopWatching(p);
     pending = null;
 
     var children = Array.prototype.slice.call(widget.childNodes);
@@ -116,7 +125,7 @@
       'visibility:hidden;pointer-events:none;';
     widget.appendChild(slot);
 
-    var p = { slot: slot, width: w, observer: null, settleTimer: null, giveUpTimer: null };
+    var p = { slot: slot, width: w, observer: null, settleTimer: null, giveUpTimer: null, onMessage: null };
     pending = p;
 
     var loaded = false;
@@ -142,6 +151,15 @@
     });
     p.observer.observe(slot, { childList: true, subtree: true, attributes: true });
     p.giveUpTimer = setTimeout(function () { swapIn(p); }, GIVE_UP_MS);
+
+    // If Google's button iframe sends messages to the page while it
+    // finishes drawing, treat those as "still busy" too. (Harmless if it
+    // doesn't: the settle timer above still applies.)
+    p.onMessage = function (e) {
+      var frame = slot.querySelector('iframe');
+      if (frame && e.source === frame.contentWindow) restartSettle();
+    };
+    window.addEventListener('message', p.onMessage);
 
     var d = widget.dataset;
     google.accounts.id.renderButton(slot, {
@@ -182,7 +200,7 @@
   function scheduleCheck() {
     clearTimeout(timer);
     // Wait until resizing/zooming settles instead of redrawing every frame.
-    timer = setTimeout(check, 150);
+    timer = setTimeout(check, RESIZE_PAUSE_MS);
   }
 
   // Container changed size (zoom, window resize, device width change).
