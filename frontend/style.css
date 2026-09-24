@@ -620,19 +620,6 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
 
-.cb-user-info {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  /* This cluster currently fits its row at every zoom level we've tested,
-     but that depends on the username being short. flex-wrap here is a
-     safety net so a long username pushes Admin/Logout onto a second line
-     within this cluster instead of clipping off the edge of the header. */
-  flex-wrap: wrap;
-  flex-shrink: 0;
-  min-width: 0;
-}
-
 .cb-user-greeting {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -758,6 +745,88 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   gap: 4px;
 }
 
+/* ── ☰ Menu ──────────────────────────────────────
+   Holds the header controls that aren't needed on every analysis
+   (demo loader, Clear, audio upload, account items). Opened/closed by
+   menu.js; positioned like the notifications dropdown. */
+.cb-menu {
+  position: relative;
+}
+
+.cb-menu__btn {
+  font-size: 1rem;
+  width: 34px;
+  padding: 0;
+  justify-content: center;
+}
+.cb-menu__btn[aria-expanded="true"] {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.cb-menu__panel {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  width: 260px;
+  max-width: calc(100vw - 1.5rem);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  padding: 0.35rem 0;
+}
+
+.cb-menu__section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 0.6rem 0.75rem;
+}
+.cb-menu__section + .cb-menu__section {
+  border-top: 1px solid var(--border);
+}
+
+.cb-menu__heading {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Full-width, left-aligned rows. */
+.cb-menu__item {
+  width: 100%;
+  justify-content: flex-start;
+  text-align: left;
+}
+.cb-menu__panel .cb-audio-upload .cb-menu__item {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#audio-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cb-menu__user {
+  max-width: 100%;
+  font-size: 0.78rem;
+}
+
+.cb-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
 .cb-btn--danger {
   color: var(--critical);
   border-color: var(--critical-bg);
@@ -853,7 +922,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
      claiming 100% width (which pushed the button onto its own line
      below, squeezed again). */
   .cb-input--search { flex: 1 1 auto; width: auto; min-width: 0; }
-  .cb-user-info { margin-left: auto; }
+  #notif-wrap { margin-left: auto; }
 
   /* 2x2 → single column */
   .cb-workspace {
@@ -884,18 +953,9 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   .cb-header { padding: 0.5rem; }
   .cb-header__controls { gap: 0.3rem; }
 
-  /* Hide less important header items on small screens */
-  .cb-audio-upload .cb-btn span { display: none; }
-  #audio-label { display: none; }
-
-  /* Stack controls vertically */
-  .cb-header__controls {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    align-items: center;
-  }
-  .cb-music-search { grid-column: 1 / -1; }
-  #analyze-btn     { grid-column: 1 / -1; width: 100%; justify-content: center; }
+  /* Language picker takes the spare width on the row with
+     Analyze / Run / bell / menu. */
+  #lang-select { flex: 1 1 auto; min-width: 0; }
 
   /* Monaco editor smaller font on mobile */
   .cb-monaco { min-height: 220px; }
@@ -1082,4 +1142,4 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 
 @media (max-width: 768px) {
   .cb-panel--output { border-right: none; }
-}
+}

@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=2" />
   <link rel="stylesheet" href="history.css" />
 
   <!-- Monaco Editor -->
@@ -47,27 +47,6 @@
         <option value="rust">Rust</option>
         <option value="go">Go</option>
       </select>
-      <select id="demo-select" class="cb-select" aria-label="Load demo code">
-        <option value="">Load demo…</option>
-        <option value="clean">✅ Clean code</option>
-        <option value="warnings">⚠️ Minor warnings</option>
-        <option value="errors">🔴 Logic errors</option>
-        <option value="critical">💀 Critical issues</option>
-        <option value="mixed">🎲 Mixed (all severities)</option>
-      </select>
-      <div class="cb-audio-upload">
-        <label for="audio-upload" class="cb-btn cb-btn--ghost" title="Upload an MP3 or WAV as backing track">
-          🎧 <span id="audio-label">Upload audio</span>
-        </label>
-        <input type="file" id="audio-upload" accept="audio/*" hidden />
-        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
-      </div>
-      <button id="clear-btn" class="cb-btn cb-btn--ghost">Clear</button>
-
-      <!-- ✅ HISTORY BUTTON — added here -->
-      <button id="history-btn" class="cb-btn cb-btn--ghost" title="View analysis history">
-        ◈ History
-      </button>
 
       <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
         <span class="cb-btn__icon">▶</span> Analyze
@@ -75,25 +54,65 @@
       <button id="run-btn" class="cb-btn cb-btn--ghost" disabled title="Run the code and show its output">
         <span class="cb-btn__icon">▶</span> Run
       </button>
-      <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
-      <div class="cb-user-info" id="user-info">
-        <span id="user-greeting" class="cb-user-greeting"></span>
-        <div class="cb-notif" id="notif-wrap">
-          <button id="notif-btn" class="cb-btn cb-btn--ghost" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
-            🔔<span id="notif-badge" class="cb-notif__badge" hidden>0</span>
-          </button>
-          <div id="notif-dropdown" class="cb-notif__dropdown" role="menu" aria-label="Notifications" hidden>
-            <div class="cb-notif__header">
-              <span>Notifications</span>
-              <button id="notif-mark-all" class="cb-notif__mark-all" type="button">Mark all read</button>
-            </div>
-            <div id="notif-list" class="cb-notif__list">
-              <div class="cb-notif__empty">No notifications yet.</div>
-            </div>
+
+      <div class="cb-notif" id="notif-wrap">
+        <button id="notif-btn" class="cb-btn cb-btn--ghost" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+          🔔<span id="notif-badge" class="cb-notif__badge" hidden>0</span>
+        </button>
+        <div id="notif-dropdown" class="cb-notif__dropdown" role="menu" aria-label="Notifications" hidden>
+          <div class="cb-notif__header">
+            <span>Notifications</span>
+            <button id="notif-mark-all" class="cb-notif__mark-all" type="button">Mark all read</button>
+          </div>
+          <div id="notif-list" class="cb-notif__list">
+            <div class="cb-notif__empty">No notifications yet.</div>
           </div>
         </div>
-        <button id="admin-link" type="button" class="cb-btn cb-btn--ghost" hidden>⚙ Admin</button>
-        <button id="logout-btn" class="cb-btn cb-btn--ghost">Logout</button>
+      </div>
+
+      <!-- Menu (☰): everything that isn't needed on every analysis.
+           The controls keep their original ids, so app.js, history.js and
+           theme.js work on them unchanged. Wired up in menu.js. -->
+      <div class="cb-menu" id="menu-wrap">
+        <button id="menu-btn" class="cb-btn cb-btn--ghost cb-menu__btn" type="button"
+                title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false" aria-controls="menu-panel">☰</button>
+        <div id="menu-panel" class="cb-menu__panel" hidden>
+          <div class="cb-menu__section">
+            <div class="cb-menu__heading">Code</div>
+            <select id="demo-select" class="cb-select cb-menu__item" aria-label="Load demo code" data-menu-close>
+              <option value="">Load demo…</option>
+              <option value="clean">✅ Clean code</option>
+              <option value="warnings">⚠️ Minor warnings</option>
+              <option value="errors">🔴 Logic errors</option>
+              <option value="critical">💀 Critical issues</option>
+              <option value="mixed">🎲 Mixed (all severities)</option>
+            </select>
+            <button id="clear-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Clear</button>
+          </div>
+
+          <div class="cb-menu__section">
+            <div class="cb-menu__heading">Sound</div>
+            <div class="cb-audio-upload">
+              <label for="audio-upload" class="cb-btn cb-btn--ghost cb-menu__item" title="Upload an MP3 or WAV as backing track">
+                🎧 <span id="audio-label">Upload audio</span>
+              </label>
+              <input type="file" id="audio-upload" accept="audio/*" hidden />
+              <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
+            </div>
+          </div>
+
+          <div class="cb-menu__section">
+            <div class="cb-menu__heading">Account</div>
+            <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
+            <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
+            <div class="cb-menu__row">
+              <span>Light / dark mode</span>
+              <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+            </div>
+            <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
+            <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item">Logout</button>
+          </div>
+        </div>
       </div>
     </div>
   </header>
@@ -372,6 +391,7 @@
   <script src="app.js"></script>
   <script src="history.js"></script>
   <script src="theme.js"></script>
+  <script src="menu.js"></script>
 
 </body>
-</html>
+</html>
