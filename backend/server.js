@@ -8,6 +8,9 @@
 //  POST /auth/login   → Login + get JWT token
 //  POST /auth/google  → Login/signup via Google
 //  GET  /auth/me      → Get current user info
+//  POST /auth/change-password → Change (or set) password while logged in
+//  POST /auth/forgot-password → Email a password reset link
+//  POST /auth/reset-password  → Set a new password from a reset link
 //  POST /history/save → Save analysis to DB
 //  GET  /history      → Get user's analysis history
 //  GET  /history/:id  → Recall full session
@@ -24,6 +27,7 @@ import dotenv       from 'dotenv';
 import helmet        from 'helmet';
 import rateLimit       from 'express-rate-limit';
 import { OAuth2Client } from 'google-auth-library';
+import crypto       from 'crypto';
 import db       from './db.js';
 import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
 
@@ -813,13 +817,14 @@ app.post('/auth/google', authLimiter, async (req, res) => {
 app.get('/auth/me', requireAuth, async (req, res) => {
   try {
     const [rows] = await db.query(
-      'SELECT id, username, email, role, created_at, last_login FROM users WHERE id = ?',
+      'SELECT id, username, email, role, created_at, last_login, (password_hash IS NOT NULL) AS has_password FROM users WHERE id = ?',
       [req.user.userId]
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    res.json({ user: rows[0] });
+    const user = { ...rows[0], has_password: !!rows[0].has_password };
+    res.json({ user });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch user info.' });
   }
@@ -836,6 +841,228 @@ app.post('/auth/logout', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('/auth/logout error:', err.message);
     res.status(500).json({ error: 'Logout failed.' });
+  }
+});
+
+// ══════════════════════════════════════════════
+// PASSWORD ROUTES
+// ══════════════════════════════════════════════
+
+// ── POST /auth/change-password ─────────────────
+// Logged-in user changes their password. Accounts created through Google
+// sign-in have no password yet: for those, currentPassword is not needed
+// and this sets their first password (they can then also log in with
+// email + password). Logs the account out everywhere except this session.
+app.post('/auth/change-password', requireAuth, authLimiter, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+
+  const strength = validatePasswordStrength(newPassword);
+  if (!strength.valid) {
+    return res.status(400).json({ error: strength.error });
+  }
+
+  try {
+    const [rows] = await db.query(
+      'SELECT password_hash FROM users WHERE id = ? LIMIT 1',
+      [req.user.userId]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+    const currentHash = rows[0].password_hash;
+
+    if (currentHash) {
+      if (typeof currentPassword !== 'string' || currentPassword === '') {
+        return res.status(400).json({ error: 'Please enter your current password.' });
+      }
+      // 400, not 401: the frontend treats 401 as "your session is over".
+      if (!(await verifyPassword(currentPassword, currentHash))) {
+        return res.status(400).json({ error: 'Your current password is incorrect.' });
+      }
+      if (await verifyPassword(newPassword, currentHash)) {
+        return res.status(400).json({ error: 'Your new password must be different from your current one.' });
+      }
+    }
+
+    const newHash = await hashPassword(newPassword);
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, req.user.userId]);
+
+    // Sign out other devices; keep the session that made this change.
+    const token = req.headers['authorization'].split(' ')[1];
+    await db.query('DELETE FROM sessions WHERE user_id = ? AND token <> ?', [req.user.userId, token]);
+
+    res.json({
+      message: currentHash
+        ? 'Password changed. Other devices have been logged out.'
+        : 'Password set. You can now also log in with your email and password.'
+    });
+  } catch (err) {
+    console.error('/auth/change-password error:', err.message);
+    res.status(500).json({ error: 'Could not change your password. Please try again.' });
+  }
+});
+
+// ── Password reset by email ────────────────────
+// Emails go through Brevo's HTTP API. Render's free tier blocks outbound
+// SMTP ports (25/465/587), so nodemailer + Gmail SMTP can't work there;
+// an HTTPS API does.
+//   BREVO_API_KEY      - Brevo → SMTP & API → API keys
+//   BREVO_SENDER_EMAIL - a sender address verified in Brevo
+//   FRONTEND_URL       - where reset-password.html lives (also used by CORS)
+const BREVO_API_KEY      = process.env.BREVO_API_KEY || '';
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || '';
+const APP_URL            = (process.env.FRONTEND_URL || 'http://localhost:5500').replace(/\/+$/, '');
+const RESET_LINK_MINUTES = 30;
+if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+  console.warn('[auth] BREVO_API_KEY / BREVO_SENDER_EMAIL not set — password reset emails are disabled.');
+}
+
+// Only the SHA-256 of a reset token is stored, so a leaked database
+// doesn't hand out working reset links.
+function hashResetToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+}
+
+async function sendPasswordResetEmail(toEmail, username, link) {
+  const name = escapeHtml(username || 'there');
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: { name: 'BugBeat', email: BREVO_SENDER_EMAIL },
+      to: [{ email: toEmail }],
+      subject: 'Reset your BugBeat password',
+      textContent:
+        `Hi ${username || 'there'},\n\n` +
+        `Someone asked to reset the password for your BugBeat account. ` +
+        `Open this link to choose a new password (it works once and expires in ${RESET_LINK_MINUTES} minutes):\n\n` +
+        `${link}\n\n` +
+        `If you didn't ask for this, you can ignore this email. Your password won't change.\n\n— BugBeat`,
+      htmlContent:
+        `<p>Hi ${name},</p>` +
+        `<p>Someone asked to reset the password for your BugBeat account. ` +
+        `Click the button below to choose a new password. The link works once and expires in ${RESET_LINK_MINUTES} minutes.</p>` +
+        `<p><a href="${escapeHtml(link)}" style="display:inline-block;padding:10px 18px;background:#1de4a8;color:#0d0d0d;` +
+        `text-decoration:none;border-radius:6px;font-weight:600">Reset password</a></p>` +
+        `<p style="font-size:13px;color:#666">Or paste this link into your browser:<br>${escapeHtml(link)}</p>` +
+        `<p style="font-size:13px;color:#666">If you didn't ask for this, you can ignore this email. Your password won't change.</p>`
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Brevo responded ${response.status}: ${await response.text()}`);
+  }
+}
+
+// Stricter than authLimiter: every request can send an email.
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many reset requests. Please wait a while before trying again.' },
+});
+
+// ── POST /auth/forgot-password ─────────────────
+// Always answers with the same message, whether or not the email has an
+// account, so this can't be used to find out which emails are registered.
+// The reply is sent before the lookup/email work so the response time
+// doesn't give that away either.
+app.post('/auth/forgot-password', forgotPasswordLimiter, async (req, res) => {
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    return res.status(503).json({ error: 'Password reset by email is not set up on this server yet.' });
+  }
+
+  const email = String(req.body?.email || '').trim();
+  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!EMAIL_PATTERN.test(email) || email.length > 254) {
+    return res.status(400).json({ error: 'Please enter a valid email address.' });
+  }
+
+  res.json({
+    message: "If an account uses that email, we've sent it a link to reset the password. " +
+             'Check your inbox (and spam folder). The link expires in ' + RESET_LINK_MINUTES + ' minutes.'
+  });
+
+  try {
+    const [users] = await db.query('SELECT id, username, email FROM users WHERE email = ? LIMIT 1', [email]);
+    if (users.length === 0) return;
+    const user = users[0];
+
+    // One working link at a time: requesting a new one cancels older ones.
+    await db.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [user.id]);
+
+    const token = crypto.randomBytes(32).toString('hex');
+    await db.query(
+      'INSERT INTO password_resets (user_id, token_hash, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE))',
+      [user.id, hashResetToken(token), RESET_LINK_MINUTES]
+    );
+
+    const link = `${APP_URL}/reset-password.html?token=${token}`;
+    await sendPasswordResetEmail(user.email, user.username, link);
+    console.log(`[auth] password reset email sent for user ${user.id}`);
+  } catch (err) {
+    console.error('/auth/forgot-password error:', err.message);
+  }
+});
+
+// ── POST /auth/reset-password ──────────────────
+// Sets a new password from a reset link's token. The token works once,
+// and every session for the account is logged out afterwards.
+app.post('/auth/reset-password', authLimiter, async (req, res) => {
+  const { token, newPassword } = req.body || {};
+  const INVALID_LINK = 'This reset link is invalid or has expired. Please request a new one.';
+
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) {
+    return res.status(400).json({ error: INVALID_LINK });
+  }
+  const strength = validatePasswordStrength(newPassword);
+  if (!strength.valid) {
+    return res.status(400).json({ error: strength.error });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT pr.id, pr.user_id
+         FROM password_resets pr
+         JOIN users u ON u.id = pr.user_id
+        WHERE pr.token_hash = ? AND pr.used_at IS NULL AND pr.expires_at > NOW()
+        LIMIT 1`,
+      [hashResetToken(token)]
+    );
+    if (rows.length === 0) {
+      return res.status(400).json({ error: INVALID_LINK });
+    }
+    const { id: resetId, user_id: userId } = rows[0];
+
+    // Claim the token first, so the same link can't be used twice even if
+    // two requests arrive at once.
+    const [claim] = await db.query(
+      'UPDATE password_resets SET used_at = NOW() WHERE id = ? AND used_at IS NULL',
+      [resetId]
+    );
+    if (claim.affectedRows === 0) {
+      return res.status(400).json({ error: INVALID_LINK });
+    }
+
+    const newHash = await hashPassword(newPassword);
+    await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [newHash, userId]);
+    await db.query('DELETE FROM sessions WHERE user_id = ?', [userId]);
+    await db.query('DELETE FROM password_resets WHERE user_id = ? AND used_at IS NULL', [userId]);
+
+    res.json({ message: 'Your password has been reset. You can now log in with your new password.' });
+  } catch (err) {
+    console.error('/auth/reset-password error:', err.message);
+    res.status(500).json({ error: 'Could not reset your password. Please try again.' });
   }
 });
 
@@ -1478,4 +1705,4 @@ function round(val, decimals) {
 // ── Start ──────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`BugBeat server running on port ${PORT}`);
-});
+});

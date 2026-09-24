@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=2" />
+  <link rel="stylesheet" href="style.css?v=3" />
   <link rel="stylesheet" href="history.css" />
 
   <!-- Monaco Editor -->
@@ -47,6 +47,15 @@
         <option value="rust">Rust</option>
         <option value="go">Go</option>
       </select>
+      <select id="demo-select" class="cb-select" aria-label="Load demo code">
+        <option value="">Load demo…</option>
+        <option value="clean">✅ Clean code</option>
+        <option value="warnings">⚠️ Minor warnings</option>
+        <option value="errors">🔴 Logic errors</option>
+        <option value="critical">💀 Critical issues</option>
+        <option value="mixed">🎲 Mixed (all severities)</option>
+      </select>
+      <button id="clear-btn" class="cb-btn cb-btn--ghost">Clear</button>
 
       <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
         <span class="cb-btn__icon">▶</span> Analyze
@@ -70,26 +79,13 @@
         </div>
       </div>
 
-      <!-- Menu (☰): everything that isn't needed on every analysis.
-           The controls keep their original ids, so app.js, history.js and
-           theme.js work on them unchanged. Wired up in menu.js. -->
+      <!-- Menu (☰): sound + account controls. The controls keep their own
+           ids, so app.js, history.js, theme.js and account.js work on them
+           as before. Opening/closing is wired up in menu.js. -->
       <div class="cb-menu" id="menu-wrap">
         <button id="menu-btn" class="cb-btn cb-btn--ghost cb-menu__btn" type="button"
                 title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false" aria-controls="menu-panel">☰</button>
         <div id="menu-panel" class="cb-menu__panel" hidden>
-          <div class="cb-menu__section">
-            <div class="cb-menu__heading">Code</div>
-            <select id="demo-select" class="cb-select cb-menu__item" aria-label="Load demo code" data-menu-close>
-              <option value="">Load demo…</option>
-              <option value="clean">✅ Clean code</option>
-              <option value="warnings">⚠️ Minor warnings</option>
-              <option value="errors">🔴 Logic errors</option>
-              <option value="critical">💀 Critical issues</option>
-              <option value="mixed">🎲 Mixed (all severities)</option>
-            </select>
-            <button id="clear-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Clear</button>
-          </div>
-
           <div class="cb-menu__section">
             <div class="cb-menu__heading">Sound</div>
             <div class="cb-audio-upload">
@@ -105,6 +101,7 @@
             <div class="cb-menu__heading">Account</div>
             <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
             <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
+            <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
             <div class="cb-menu__row">
               <span>Light / dark mode</span>
               <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
@@ -376,6 +373,49 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════════════════════════
+       CHANGE PASSWORD — modal (account.js)
+       Also used to SET a first password on accounts created with Google.
+  ═══════════════════════════════════════════ -->
+  <div id="pw-modal" class="cb-bugreport-modal" hidden role="dialog" aria-modal="true" aria-labelledby="pw-modal-title">
+    <form id="pw-form" class="cb-bugreport-modal__box" novalidate>
+      <div class="cb-bugreport-modal__header">
+        <span id="pw-modal-title" class="cb-bugreport-modal__title">Change password</span>
+        <button type="button" id="pw-close-btn" class="cb-btn cb-btn--ghost" title="Close" aria-label="Close">✕</button>
+      </div>
+      <p id="pw-hint" class="cb-bugreport-modal__hint">Other devices signed in to your account will be logged out.</p>
+
+      <div class="cb-pwfield" id="pw-current-field">
+        <label for="pw-current">Current password</label>
+        <div class="cb-pwfield__wrap">
+          <input type="password" id="pw-current" autocomplete="current-password" />
+          <button type="button" class="cb-pwfield__toggle" data-target="pw-current" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+      </div>
+      <div class="cb-pwfield">
+        <label for="pw-new">New password</label>
+        <div class="cb-pwfield__wrap">
+          <input type="password" id="pw-new" autocomplete="new-password" />
+          <button type="button" class="cb-pwfield__toggle" data-target="pw-new" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <div class="cb-pwfield__hint">At least 8 characters, with a letter and a number</div>
+      </div>
+      <div class="cb-pwfield">
+        <label for="pw-confirm">Confirm new password</label>
+        <div class="cb-pwfield__wrap">
+          <input type="password" id="pw-confirm" autocomplete="new-password" />
+          <button type="button" class="cb-pwfield__toggle" data-target="pw-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+      </div>
+
+      <div id="pw-msg" class="cb-bugreport-modal__msg" hidden></div>
+      <div class="cb-bugreport-modal__actions">
+        <button type="submit" id="pw-submit-btn" class="cb-btn cb-btn--primary">Save password</button>
+        <button type="button" id="pw-cancel-btn" class="cb-btn cb-btn--ghost">Cancel</button>
+      </div>
+    </form>
+  </div>
+
   <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
@@ -392,6 +432,7 @@
   <script src="history.js"></script>
   <script src="theme.js"></script>
   <script src="menu.js"></script>
+  <script src="account.js"></script>
 
 </body>
 </html>

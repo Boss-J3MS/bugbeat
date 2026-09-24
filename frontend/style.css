@@ -1085,6 +1085,57 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   justify-content: flex-end;
 }
 
+/* ── Change password fields (account.js) ─────── */
+.cb-pwfield {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.75rem;
+}
+.cb-pwfield[hidden] { display: none; }
+.cb-pwfield label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cb-pwfield__wrap { position: relative; }
+.cb-pwfield__wrap input {
+  width: 100%;
+  height: 38px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  padding: 0 3.4rem 0 0.7rem;
+}
+.cb-pwfield__wrap input:focus { outline: none; border-color: var(--accent); }
+.cb-pwfield__toggle {
+  position: absolute;
+  top: 50%;
+  right: 0.5rem;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0.2rem 0.3rem;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cb-pwfield__toggle:hover,
+.cb-pwfield__toggle:focus-visible { color: var(--accent); }
+.cb-pwfield__hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
 @media (max-width: 480px) {
   .cb-bugreport-fab { right: 14px; bottom: 14px; width: 46px; height: 46px; font-size: 1.2rem; }
 }
