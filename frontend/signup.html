@@ -86,18 +86,9 @@
     </div>
   </div>
 
-  <script>
-    // See login.html for why this runs here (synchronous, before the
-    // deferred Google script below) rather than as a renderButton() call.
-    (function () {
-      var container = document.getElementById('google-signin-btn');
-      var widget = document.getElementById('g_id_signin_widget');
-      if (container && widget) {
-        var w = Math.min(Math.floor(container.getBoundingClientRect().width), 400);
-        if (w > 0) widget.setAttribute('data-width', String(w));
-      }
-    })();
-  </script>
+  <!-- Not async/defer on purpose: sets the button width before Google's
+       deferred script below draws it. See google-btn.js. -->
+  <script src="google-btn.js?v=1"></script>
   <script src="https://accounts.google.com/gsi/client" defer></script>
   <script>
     const BACKEND_URL =
