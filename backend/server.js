@@ -11,6 +11,9 @@
 //  POST /auth/google  → Login/signup via Google
 //  GET  /auth/me      → Get current user info
 //  POST /auth/change-password → Change (or set) password while logged in
+//  POST /auth/admin-invite/check  → Is an admin invite link still usable?
+//  POST /auth/admin-invite/accept → Logged-in user accepts an admin invite
+//  GET/POST /admin/invites, DELETE /admin/invites/:id → Manage invite links
 //  POST /auth/forgot-password → Email a password reset link
 //  POST /auth/reset-password  → Set a new password from a reset link
 //  POST /history/save → Save analysis to DB
@@ -1866,6 +1869,167 @@ app.delete('/admin/users/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'User deleted successfully.' });
   } catch (err) {
     res.status(500).json({ error: 'Could not delete user.' });
+  }
+});
+
+// ── Admin invite links ─────────────────────────
+// There's no public way to sign up as an admin. An existing admin creates
+// a one-time invite link (optionally locked to one email); the invitee
+// opens it while logged in to a normal, verified account and accepts it.
+// Links expire after ADMIN_INVITE_HOURS, work once, can be revoked, and
+// only a SHA-256 of the token is stored.
+const ADMIN_INVITE_HOURS = 48;
+const INVALID_INVITE = 'This invite link is invalid, has expired, or has already been used. Ask an admin for a new one.';
+
+function hashInviteToken(token) {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// "roland@gmail.com" -> "r****d@gmail.com", so a leaked link doesn't
+// reveal the full address it's locked to.
+function maskEmail(email) {
+  const [name, domain] = String(email).split('@');
+  if (!domain) return '';
+  const hidden = name.length <= 2 ? name[0] + '*' : name[0] + '*'.repeat(Math.min(name.length - 2, 6)) + name[name.length - 1];
+  return `${hidden}@${domain}`;
+}
+
+async function findUsableInvite(token) {
+  if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) return null;
+  const [rows] = await db.query(
+    `SELECT id, email FROM admin_invites
+      WHERE token_hash = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+      LIMIT 1`,
+    [hashInviteToken(token)]
+  );
+  return rows[0] || null;
+}
+
+// ── POST /admin/invites ────────────────────────
+app.post('/admin/invites', requireAdmin, async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (email && (!EMAIL_PATTERN.test(email) || email.length > 254)) {
+    return res.status(400).json({ error: 'Please enter a valid email address, or leave it empty.' });
+  }
+  try {
+    const token = crypto.randomBytes(32).toString('hex');
+    const [result] = await db.query(
+      `INSERT INTO admin_invites (token_hash, email, created_by, expires_at)
+       VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL ? HOUR))`,
+      [hashInviteToken(token), email || null, req.user.userId, ADMIN_INVITE_HOURS]
+    );
+    res.status(201).json({
+      id: result.insertId,
+      link: `${APP_URL}/admin-invite.html?token=${token}`,
+      email: email || null,
+      expiresInHours: ADMIN_INVITE_HOURS
+    });
+  } catch (err) {
+    console.error('POST /admin/invites error:', err.message);
+    res.status(500).json({ error: 'Could not create the invite.' });
+  }
+});
+
+// ── GET /admin/invites ─────────────────────────
+app.get('/admin/invites', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT i.id, i.email, i.created_at, i.expires_at, i.used_at, i.revoked_at,
+              c.username AS created_by, u.username AS used_by,
+              CASE
+                WHEN i.used_at    IS NOT NULL THEN 'used'
+                WHEN i.revoked_at IS NOT NULL THEN 'revoked'
+                WHEN i.expires_at <= NOW()    THEN 'expired'
+                ELSE 'active'
+              END AS status
+         FROM admin_invites i
+         LEFT JOIN users c ON c.id = i.created_by
+         LEFT JOIN users u ON u.id = i.used_by
+        ORDER BY i.created_at DESC
+        LIMIT 50`
+    );
+    res.json({ invites: rows });
+  } catch (err) {
+    console.error('GET /admin/invites error:', err.message);
+    res.status(500).json({ error: 'Could not load invites.' });
+  }
+});
+
+// ── DELETE /admin/invites/:id ──────────────────
+// Revokes an invite that hasn't been used yet.
+app.delete('/admin/invites/:id', requireAdmin, async (req, res) => {
+  try {
+    const [result] = await db.query(
+      'UPDATE admin_invites SET revoked_at = NOW() WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL',
+      [req.params.id]
+    );
+    if (result.affectedRows === 0) {
+      return res.status(400).json({ error: 'That invite was already used or revoked.' });
+    }
+    res.json({ message: 'Invite revoked.' });
+  } catch (err) {
+    console.error('DELETE /admin/invites error:', err.message);
+    res.status(500).json({ error: 'Could not revoke the invite.' });
+  }
+});
+
+// ── POST /auth/admin-invite/check ──────────────
+// Lets admin-invite.html tell the visitor up front whether the link still
+// works (and which email it's for) before they log in. Not on authLimiter:
+// the page calls it on every visit (before and after logging in), and a
+// 256-bit token can't be guessed anyway; the general limiter still applies.
+app.post('/auth/admin-invite/check', async (req, res) => {
+  try {
+    const invite = await findUsableInvite(req.body?.token);
+    if (!invite) return res.json({ valid: false, error: INVALID_INVITE });
+    res.json({ valid: true, emailHint: invite.email ? maskEmail(invite.email) : null, expiresInHours: ADMIN_INVITE_HOURS });
+  } catch (err) {
+    console.error('/auth/admin-invite/check error:', err.message);
+    res.status(500).json({ error: 'Could not check the invite. Please try again.' });
+  }
+});
+
+// ── POST /auth/admin-invite/accept ─────────────
+app.post('/auth/admin-invite/accept', requireAuth, authLimiter, async (req, res) => {
+  try {
+    const invite = await findUsableInvite(req.body?.token);
+    if (!invite) return res.status(400).json({ error: INVALID_INVITE });
+
+    const [users] = await db.query('SELECT id, email, role FROM users WHERE id = ? LIMIT 1', [req.user.userId]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found.' });
+    const me = users[0];
+
+    if (me.role === 'admin') {
+      return res.status(400).json({ error: "Your account is already an admin, so this invite wasn't used. You can pass it on to the person it was meant for." });
+    }
+    if (invite.email && invite.email.toLowerCase() !== String(me.email).toLowerCase()) {
+      return res.status(403).json({
+        error: `This invite is for ${maskEmail(invite.email)}. Log in with that account to accept it.`
+      });
+    }
+
+    // Claim the invite first so it can't be used twice, even by two
+    // requests at the same moment.
+    const [claim] = await db.query(
+      `UPDATE admin_invites SET used_at = NOW(), used_by = ?
+        WHERE id = ? AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()`,
+      [me.id, invite.id]
+    );
+    if (claim.affectedRows === 0) return res.status(400).json({ error: INVALID_INVITE });
+
+    await db.query("UPDATE users SET role = 'admin' WHERE id = ?", [me.id]);
+    // Same as Promote: end existing sessions so the new role takes effect
+    // on the next login.
+    await db.query('DELETE FROM sessions WHERE user_id = ?', [me.id]);
+    await db.query(
+      'INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)',
+      [me.id, 'You are now a BugBeat admin. Open the Admin page from the ☰ menu.', 'system']
+    );
+
+    res.json({ message: 'You are now an admin. Please log in again to open the Admin page.' });
+  } catch (err) {
+    console.error('/auth/admin-invite/accept error:', err.message);
+    res.status(500).json({ error: 'Could not accept the invite. Please try again.' });
   }
 });
 

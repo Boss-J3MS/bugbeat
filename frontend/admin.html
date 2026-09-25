@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=4" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css" />
+  <link rel="stylesheet" href="admin.css?v=2" />
 </head>
 <body>
 
@@ -30,6 +30,7 @@
       <button class="admin-nav__btn" data-tab="users">👥 Users</button>
       <button class="admin-nav__btn" data-tab="analyses">📋 Analyses</button>
       <button class="admin-nav__btn" data-tab="bugreports">🐛 Bug Reports</button>
+      <button class="admin-nav__btn" data-tab="invites">🔑 Invites</button>
     </nav>
     <div class="cb-user-info">
       <span id="user-greeting" class="cb-user-greeting"></span>
@@ -142,6 +143,49 @@
             </tr>
           </thead>
           <tbody id="bugreports-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── INVITES TAB ───────────────────────── -->
+    <div id="tab-invites" class="admin-tab">
+      <h2 class="admin-section-title">Admin Invites</h2>
+
+      <div class="admin-card admin-invite-create">
+        <h3 class="admin-card__title">Create an invite link</h3>
+        <p class="admin-invite-help">
+          Send the link to the person you want to make an admin. They open it while logged in
+          to their BugBeat account and accept it. Each link works once and expires after 48 hours.
+        </p>
+        <form id="invite-form" class="admin-invite-form" novalidate>
+          <input type="email" id="invite-email" class="admin-invite-input" autocomplete="off"
+                 placeholder="Their email (optional: only that account can use the link)" />
+          <button type="submit" id="invite-create-btn" class="cb-btn cb-btn--primary">Create invite link</button>
+        </form>
+        <div id="invite-error" class="admin-invite-msg admin-invite-msg--error" hidden></div>
+        <div id="invite-result" class="admin-invite-result" hidden>
+          <p class="admin-invite-help"><strong>Copy this link now.</strong> For security it can't be shown again.</p>
+          <div class="admin-invite-linkrow">
+            <input type="text" id="invite-link" class="admin-invite-input" readonly />
+            <button type="button" id="invite-copy-btn" class="cb-btn cb-btn--ghost">Copy</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>For</th>
+              <th>Status</th>
+              <th>Created by</th>
+              <th>Created</th>
+              <th>Expires</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="invites-tbody"></tbody>
         </table>
       </div>
     </div>
@@ -389,6 +433,103 @@
       });
     });
 
+    // ── Admin invites ──────────────────────────
+    const INVITE_STATUS = {
+      active:  { label: 'Waiting',  cls: 'admin-invite-status--active' },
+      used:    { label: 'Used',     cls: 'admin-invite-status--used' },
+      expired: { label: 'Expired',  cls: 'admin-invite-status--off' },
+      revoked: { label: 'Revoked',  cls: 'admin-invite-status--off' }
+    };
+
+    function formatDateTime(d) {
+      return d ? new Date(d).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '—';
+    }
+
+    async function loadInvites() {
+      const tbody = document.getElementById('invites-tbody');
+      try {
+        const res  = await fetch(`${BACKEND_URL}/admin/invites`, { headers: authHeaders() });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not load invites.');
+        tbody.innerHTML = data.invites.map(i => {
+          const st = INVITE_STATUS[i.status] || INVITE_STATUS.expired;
+          const label = i.status === 'used' && i.used_by ? `Used by ${esc(i.used_by)}` : st.label;
+          return `
+          <tr>
+            <td>${esc(i.id)}</td>
+            <td>${i.email ? esc(i.email) : '<span class="admin-empty-inline">Anyone with the link</span>'}</td>
+            <td><span class="admin-invite-status ${st.cls}">${label}</span></td>
+            <td>${esc(i.created_by || '—')}</td>
+            <td>${formatDateTime(i.created_at)}</td>
+            <td>${i.status === 'active' ? formatDateTime(i.expires_at) : '—'}</td>
+            <td class="admin-actions">
+              ${i.status === 'active' ? `
+                <button class="cb-btn cb-btn--ghost admin-btn-sm admin-btn-danger"
+                  data-action="revoke-invite" data-id="${esc(i.id)}">Revoke</button>` : '<span class="admin-empty-inline">—</span>'}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="admin-empty">No invites yet</td></tr>';
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="7" class="admin-empty">${esc(err.message)}</td></tr>`;
+      }
+    }
+
+    document.getElementById('invite-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn     = document.getElementById('invite-create-btn');
+      const errEl   = document.getElementById('invite-error');
+      const result  = document.getElementById('invite-result');
+      const email   = document.getElementById('invite-email').value.trim();
+      errEl.hidden = true;
+      result.hidden = true;
+      btn.disabled = true;
+      btn.textContent = 'Creating…';
+      try {
+        const res  = await fetch(`${BACKEND_URL}/admin/invites`, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Could not create the invite.');
+        document.getElementById('invite-link').value = data.link;
+        document.getElementById('invite-copy-btn').textContent = 'Copy';
+        result.hidden = false;
+        document.getElementById('invite-email').value = '';
+        loadInvites();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Create invite link';
+      }
+    });
+
+    document.getElementById('invite-copy-btn').addEventListener('click', async () => {
+      const input = document.getElementById('invite-link');
+      const btn   = document.getElementById('invite-copy-btn');
+      try {
+        await navigator.clipboard.writeText(input.value);
+      } catch (e) {
+        input.select();
+        document.execCommand('copy');
+      }
+      btn.textContent = 'Copied!';
+    });
+
+    document.getElementById('invites-tbody').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-action="revoke-invite"]');
+      if (!btn) return;
+      const ok = await confirm('Revoke this invite? The link will stop working.');
+      if (!ok) return;
+      await fetch(`${BACKEND_URL}/admin/invites/${btn.dataset.id}`, {
+        method: 'DELETE',
+        headers: authHeaders()
+      });
+      loadInvites();
+    });
+
     function formatDate(d) {
       return d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     }
@@ -398,6 +539,7 @@
     loadUsers();
     loadAnalyses();
     loadBugReports();
+    loadInvites();
   </script>
   <script src="theme.js"></script>
   <script src="logout.js?v=2"></script>

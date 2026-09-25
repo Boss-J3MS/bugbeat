@@ -491,6 +491,7 @@
   font-size: 0.78rem;
   font-weight: 600;
   color: var(--accent);
+  text-decoration: none;
   cursor: pointer;
 }
 .auth-linkbtn:hover:not(:disabled) { text-decoration: underline; }
@@ -505,4 +506,12 @@
   .auth-title    { font-size: 1.2rem; }
   .auth-btn      { height: 40px; font-size: 0.85rem; }
   .auth-field input { height: 38px; font-size: 0.85rem; }
+}
+/* A link styled as the main auth button (admin-invite.html) */
+.auth-btn--link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  margin-top: 0;
 }

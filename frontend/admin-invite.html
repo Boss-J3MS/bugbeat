@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- The invite token is in this page's URL: don't send it to other sites. -->
+  <meta name="referrer" content="no-referrer" />
+  <title>BugBeat — Admin Invite</title>
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="auth.css?v=16" />
+</head>
+<body class="auth-page">
+
+  <div class="auth-visual">
+    <canvas id="auth-rain" class="auth-rain-bg" aria-hidden="true"></canvas>
+    <img src="bugbeatLogo-bg.png" alt="" class="auth-bg-logo auth-bg-logo--dark" aria-hidden="true" />
+    <img src="bugbeatLogo.png" alt="" class="auth-bg-logo auth-bg-logo--light" aria-hidden="true" />
+  </div>
+
+  <div class="auth-form-panel">
+    <button id="theme-toggle" class="cb-btn cb-btn--ghost auth-theme-toggle" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+
+    <div class="auth-card">
+      <h1 class="auth-title">Admin invite</h1>
+      <p id="invite-subtitle" class="auth-subtitle">Checking your invite…</p>
+
+      <div id="auth-error" class="auth-error" hidden></div>
+      <div id="auth-success" class="auth-success" hidden></div>
+
+      <!-- Not logged in -->
+      <div id="step-login" class="auth-verify" hidden>
+        <p class="auth-verify__text">
+          You've been invited to become a BugBeat admin. Log in to the account that should get admin
+          access, or sign up first if you don't have one yet. You'll come back here afterwards.
+        </p>
+        <a id="go-login" href="login.html" class="auth-btn auth-btn--link">Log in</a>
+        <p class="auth-switch">Don't have an account? <a id="go-signup" href="signup.html">Sign up</a></p>
+      </div>
+
+      <!-- Logged in: accept -->
+      <div id="step-accept" class="auth-verify" hidden>
+        <p class="auth-verify__text">
+          You're logged in as <strong id="current-user"></strong>. Accepting gives this account
+          access to the Admin page. You'll be asked to log in again afterwards.
+        </p>
+        <button id="accept-btn" type="button" class="auth-btn">Accept admin access</button>
+        <div class="auth-verify__links">
+          <button type="button" id="switch-account-btn" class="auth-linkbtn">Use a different account</button>
+          <a href="index.html" class="auth-linkbtn">Not now</a>
+        </div>
+      </div>
+
+      <!-- Done -->
+      <div id="step-done" class="auth-verify" hidden>
+        <a href="login.html" class="auth-btn auth-btn--link">Log in again</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const BACKEND_URL =
+      (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+        ? 'http://localhost:3000'
+        : 'https://bugbeat.onrender.com';
+
+    const errEl = document.getElementById('auth-error');
+    const sucEl = document.getElementById('auth-success');
+    const subtitle = document.getElementById('invite-subtitle');
+
+    function showError(text) { sucEl.hidden = true; errEl.textContent = text; errEl.hidden = false; }
+    function showStep(id) {
+      ['step-login', 'step-accept', 'step-done'].forEach(s => {
+        document.getElementById(s).hidden = (s !== id);
+      });
+    }
+
+    // The token comes from the link, or from sessionStorage when the user
+    // comes back here after logging in. It's removed from the address bar
+    // so it doesn't linger in history or screenshots.
+    let token = new URLSearchParams(location.search).get('token') || '';
+    try {
+      if (token) sessionStorage.setItem('cb_admin_invite', token);
+      else token = sessionStorage.getItem('cb_admin_invite') || '';
+    } catch (e) {}
+    if (location.search) history.replaceState(null, '', location.pathname);
+
+    function forgetInvite() {
+      try {
+        sessionStorage.removeItem('cb_admin_invite');
+        sessionStorage.removeItem('cb_after_login');
+      } catch (e) {}
+    }
+
+    // Send the user to log in / sign up, then back here.
+    function comeBackAfterLogin() {
+      try { sessionStorage.setItem('cb_after_login', 'admin-invite.html'); } catch (e) {}
+    }
+    document.getElementById('go-login').addEventListener('click', comeBackAfterLogin);
+    document.getElementById('go-signup').addEventListener('click', comeBackAfterLogin);
+
+    document.getElementById('switch-account-btn').addEventListener('click', async () => {
+      const cbToken = localStorage.getItem('cb_token');
+      if (cbToken) {
+        fetch(`${BACKEND_URL}/auth/logout`, { method: 'POST', headers: { Authorization: `Bearer ${cbToken}` } }).catch(() => {});
+      }
+      localStorage.removeItem('cb_token');
+      localStorage.removeItem('cb_user');
+      comeBackAfterLogin();
+      window.location.href = 'login.html';
+    });
+
+    document.getElementById('accept-btn').addEventListener('click', async () => {
+      const btn = document.getElementById('accept-btn');
+      errEl.hidden = true;
+      btn.disabled = true;
+      btn.textContent = 'Accepting…';
+      try {
+        const res = await fetch(`${BACKEND_URL}/auth/admin-invite/accept`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('cb_token')}`
+          },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          // Login expired: log in again, then come back.
+          localStorage.removeItem('cb_token');
+          localStorage.removeItem('cb_user');
+          subtitle.textContent = 'Your login has expired. Log in again to accept the invite.';
+          return showStep('step-login');
+        }
+        if (!res.ok) throw new Error(data.error || 'Could not accept the invite.');
+
+        // The server ended this account's sessions so the new role applies
+        // on the next login.
+        forgetInvite();
+        localStorage.removeItem('cb_token');
+        localStorage.removeItem('cb_user');
+        subtitle.textContent = 'Invite accepted.';
+        sucEl.textContent = data.message;
+        sucEl.hidden = false;
+        showStep('step-done');
+      } catch (err) {
+        showError(err.message === 'Failed to fetch'
+          ? 'Could not reach the server. Please try again in a moment.'
+          : err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Accept admin access';
+      }
+    });
+
+    (async function init() {
+      if (!/^[a-f0-9]{64}$/.test(token)) {
+        subtitle.textContent = 'This link is incomplete.';
+        showError('This invite link is incomplete or invalid. Make sure you opened the full link you were sent.');
+        return;
+      }
+      try {
+        const res = await fetch(`${BACKEND_URL}/auth/admin-invite/check`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not check the invite.');
+        if (!data.valid) {
+          forgetInvite();
+          subtitle.textContent = 'This invite can no longer be used.';
+          return showError(data.error);
+        }
+
+        subtitle.textContent = data.emailHint
+          ? `This invite is for the account with the email ${data.emailHint}.`
+          : 'This invite can be used by any BugBeat account.';
+
+        const user = JSON.parse(localStorage.getItem('cb_user') || 'null');
+        if (localStorage.getItem('cb_token') && user) {
+          document.getElementById('current-user').textContent = `${user.username}${user.email ? ' (' + user.email + ')' : ''}`;
+          showStep('step-accept');
+        } else {
+          showStep('step-login');
+        }
+      } catch (err) {
+        showError(err.message === 'Failed to fetch'
+          ? 'Could not reach the server. Please reload the page in a moment.'
+          : err.message);
+      }
+    })();
+  </script>
+  <script src="theme.js"></script>
+  <script src="rain.js"></script>
+
+</body>
+</html>

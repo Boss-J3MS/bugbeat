@@ -85,11 +85,22 @@
         ? 'http://localhost:3000'
         : 'https://bugbeat.onrender.com';
 
+    // Where to go after logging in: back to an admin invite if that's what
+    // sent the user here (admin-invite.html sets this), otherwise the app.
+    function nextPage() {
+      let next = null;
+      try {
+        next = sessionStorage.getItem('cb_after_login');
+        sessionStorage.removeItem('cb_after_login');
+      } catch (e) {}
+      return next === 'admin-invite.html' ? next : 'index.html';
+    }
+
     const GOOGLE_CLIENT_ID = '808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com';
 
     // Redirect if already logged in
     if (localStorage.getItem('cb_token')) {
-      window.location.href = 'index.html';
+      window.location.href = nextPage();
     }
 
     // Shared with the password-login flow below: on success, save the
@@ -102,7 +113,7 @@
       errEl.hidden = true;
       sucEl.textContent = `Welcome${welcomeName ? ', ' + welcomeName : ''}! Redirecting…`;
       sucEl.hidden = false;
-      setTimeout(() => window.location.href = 'index.html', 1000);
+      setTimeout(() => window.location.href = nextPage(), 1000);
     }
 
     async function handleGoogleCredential(response) {
@@ -162,7 +173,7 @@
 
         sucEl.textContent = `Welcome back, ${data.user.username}! Redirecting…`;
         sucEl.hidden = false;
-        setTimeout(() => window.location.href = 'index.html', 1000);
+        setTimeout(() => window.location.href = nextPage(), 1000);
       } catch (err) {
         errEl.textContent = err.message;
         errEl.hidden = false;
