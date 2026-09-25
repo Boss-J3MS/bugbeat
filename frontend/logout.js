@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════
-//  logout.js — "Log out?" confirmation
+//  logout.js — "Are you sure you want to log out?" confirmation
 //  Used by index.html and admin.html. Clicking #logout-btn opens a small
 //  confirmation window instead of logging out straight away. Confirming
 //  ends the session on the server (POST /auth/logout), clears the saved
@@ -26,7 +26,7 @@
   modal.innerHTML = `
     <div class="cb-bugreport-modal__box cb-logout-modal__box">
       <div class="cb-bugreport-modal__header">
-        <span id="logout-modal-title" class="cb-bugreport-modal__title">Log out?</span>
+        <span id="logout-modal-title" class="cb-bugreport-modal__title">Are you sure you want to log out?</span>
       </div>
       <p class="cb-bugreport-modal__hint">You'll need to log in again to use BugBeat.</p>
       <div class="cb-bugreport-modal__actions">
