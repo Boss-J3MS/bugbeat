@@ -15,7 +15,7 @@
     })();
   </script>
   <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="auth.css?v=13" />
+  <link rel="stylesheet" href="auth.css?v=15" />
 </head>
 <body class="auth-page">
 
@@ -29,13 +29,13 @@
     <button id="theme-toggle" class="cb-btn cb-btn--ghost auth-theme-toggle" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
 
     <div class="auth-card">
-      <h1 class="auth-title">Create account</h1>
-      <p class="auth-subtitle">Start finding errors through rhythm</p>
+      <h1 id="auth-title" class="auth-title">Create account</h1>
+      <p id="auth-subtitle" class="auth-subtitle">Start finding errors through rhythm</p>
 
       <div id="auth-error" class="auth-error" hidden></div>
       <div id="auth-success" class="auth-success" hidden></div>
 
-      <div class="auth-form">
+      <div id="signup-form" class="auth-form">
         <div class="auth-field">
           <label for="username">Username</label>
           <input type="text" id="username" placeholder="your_username" autocomplete="username" />
@@ -50,7 +50,7 @@
             <input type="password" id="password" placeholder="At least 8 characters" autocomplete="new-password" />
             <button type="button" class="auth-field__toggle-pw" data-target="password" aria-pressed="false" aria-label="Show password">Show</button>
           </div>
-          <div class="auth-field__hint">Minimum 8 characters</div>
+          <div class="auth-field__hint">At least 8 characters, with a letter and a number</div>
         </div>
         <div class="auth-field">
           <label for="confirm">Confirm Password</label>
@@ -62,7 +62,26 @@
         <button id="signup-btn" class="auth-btn">Create account</button>
       </div>
 
-      <div class="auth-divider"><span>or</span></div>
+      <!-- Step 2: enter the 6-digit code emailed to the address above. -->
+      <div id="verify-step" class="auth-verify" hidden>
+        <p class="auth-verify__text">
+          We sent a 6-digit code to <strong id="verify-email"></strong>.
+          Enter it below to finish creating your account.
+        </p>
+        <div class="auth-field">
+          <label for="verify-code">Verification code</label>
+          <input type="text" id="verify-code" class="auth-code-input" inputmode="numeric"
+                 autocomplete="one-time-code" maxlength="6" placeholder="••••••" spellcheck="false" />
+          <div class="auth-field__hint">Didn't get it? Check your spam folder. The code expires in 10 minutes.</div>
+        </div>
+        <button id="verify-btn" type="button" class="auth-btn">Verify and create account</button>
+        <div class="auth-verify__links">
+          <button type="button" id="resend-btn" class="auth-linkbtn">Resend code</button>
+          <button type="button" id="change-email-btn" class="auth-linkbtn">Use a different email</button>
+        </div>
+      </div>
+
+      <div id="auth-divider" class="auth-divider"><span>or</span></div>
       <div id="google-signin-btn" class="auth-google-btn">
         <div id="g_id_onload"
              data-client_id="808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com"
@@ -136,60 +155,180 @@
     // g_id_signin_widget divs above auto-initialize from their data
     // attributes once the deferred script loads.
 
+    const errEl  = document.getElementById('auth-error');
+    const sucEl  = document.getElementById('auth-success');
+    const formEl = document.getElementById('signup-form');
+    const stepEl = document.getElementById('verify-step');
+    const codeEl = document.getElementById('verify-code');
+    const verifyBtn = document.getElementById('verify-btn');
+    const resendBtn = document.getElementById('resend-btn');
+    let pendingEmail = '';
+    let resendTimer = null;
+
+    function showError(text) { sucEl.hidden = true; errEl.textContent = text; errEl.hidden = false; }
+    function showSuccess(text) { errEl.hidden = true; sucEl.textContent = text; sucEl.hidden = false; }
+    function clearMessages() { errEl.hidden = true; sucEl.hidden = true; }
+
+    // Google sign-in + divider are hidden while entering the code.
+    function setStep(verifying) {
+      formEl.style.display = verifying ? 'none' : '';   // .auth-form's display:flex beats [hidden]
+      stepEl.hidden = !verifying;
+      document.getElementById('auth-divider').style.display = verifying ? 'none' : '';
+      document.getElementById('google-signin-btn').style.display = verifying ? 'none' : '';
+      document.getElementById('auth-title').textContent = verifying ? 'Verify your email' : 'Create account';
+      document.getElementById('auth-subtitle').hidden = verifying;
+    }
+
+    function startResendCountdown(seconds) {
+      clearInterval(resendTimer);
+      let left = seconds;
+      resendBtn.disabled = true;
+      resendBtn.textContent = `Resend code (${left}s)`;
+      resendTimer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(resendTimer);
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Resend code';
+        } else {
+          resendBtn.textContent = `Resend code (${left}s)`;
+        }
+      }, 1000);
+    }
+
+    function finishSignup(data) {
+      localStorage.setItem('cb_token', data.token);
+      localStorage.setItem('cb_user',  JSON.stringify(data.user));
+      showSuccess(`Account created! Welcome, ${data.user.username}! Redirecting…`);
+      setTimeout(() => window.location.href = 'index.html', 1200);
+    }
+
+    function networkMessage(err) {
+      return err.message === 'Failed to fetch'
+        ? 'Could not reach the server. Please try again in a moment.'
+        : err.message;
+    }
+
+    // Step 1: details → code emailed
     document.getElementById('signup-btn').addEventListener('click', async () => {
       const username = document.getElementById('username').value.trim();
       const email    = document.getElementById('email').value.trim();
       const password = document.getElementById('password').value;
       const confirm  = document.getElementById('confirm').value;
       const btn      = document.getElementById('signup-btn');
-      const errEl    = document.getElementById('auth-error');
-      const sucEl    = document.getElementById('auth-success');
+      clearMessages();
 
-      errEl.hidden = true;
-      sucEl.hidden = true;
-
-      if (!username || !email || !password || !confirm) {
-        errEl.textContent = 'Please fill in all fields.';
-        errEl.hidden = false; return;
+      if (!username || !email || !password || !confirm) return showError('Please fill in all fields.');
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return showError('Please enter a valid email address.');
+      if (password.length < 8) return showError('Password must be at least 8 characters.');
+      if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+        return showError('Password must contain at least one letter and one number.');
       }
-      if (password.length < 8) {
-        errEl.textContent = 'Password must be at least 8 characters.';
-        errEl.hidden = false; return;
-      }
-      if (password !== confirm) {
-        errEl.textContent = 'Passwords do not match.';
-        errEl.hidden = false; return;
-      }
+      if (password !== confirm) return showError('Passwords do not match.');
 
       btn.disabled    = true;
-      btn.textContent = 'Creating account…';
-
+      btn.textContent = 'Checking email…';
       try {
         const res  = await fetch(`${BACKEND_URL}/auth/signup`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, email, password })
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Signup failed.');
 
-        localStorage.setItem('cb_token', data.token);
-        localStorage.setItem('cb_user',  JSON.stringify(data.user));
-
-        sucEl.textContent = `Account created! Welcome, ${data.user.username}! Redirecting…`;
-        sucEl.hidden = false;
-        setTimeout(() => window.location.href = 'index.html', 1200);
+        if (data.token) return finishSignup(data); // backend without verification
+        pendingEmail = data.email || email;
+        document.getElementById('verify-email').textContent = pendingEmail;
+        codeEl.value = '';
+        setStep(true);
+        startResendCountdown(60);
+        codeEl.focus();
       } catch (err) {
-        errEl.textContent = err.message;
-        errEl.hidden = false;
+        showError(networkMessage(err));
       } finally {
         btn.disabled    = false;
         btn.textContent = 'Create account';
       }
     });
 
+    // Step 2: code → account created
+    async function verifyCode() {
+      const code = codeEl.value.replace(/\D/g, '');
+      clearMessages();
+      if (code.length !== 6) return showError('Please enter the 6-digit code from the email.');
+
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = 'Verifying…';
+      try {
+        const res  = await fetch(`${BACKEND_URL}/auth/signup/verify`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: pendingEmail, code })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || 'Could not verify the code.');
+          codeEl.select();
+          if (data.expired && !resendBtn.disabled) resendBtn.focus();
+          return;
+        }
+        clearInterval(resendTimer);
+        finishSignup(data);
+      } catch (err) {
+        showError(networkMessage(err));
+      } finally {
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = 'Verify and create account';
+      }
+    }
+    verifyBtn.addEventListener('click', verifyCode);
+
+    // Digits only; submit automatically once all 6 are in.
+    codeEl.addEventListener('input', () => {
+      codeEl.value = codeEl.value.replace(/\D/g, '').slice(0, 6);
+      if (codeEl.value.length === 6 && !verifyBtn.disabled) verifyCode();
+    });
+
+    resendBtn.addEventListener('click', async () => {
+      clearMessages();
+      resendBtn.disabled = true;
+      try {
+        const res  = await fetch(`${BACKEND_URL}/auth/signup/resend`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: pendingEmail })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || 'Could not send a new code.');
+          if (data.retryAfter) return startResendCountdown(data.retryAfter);
+          resendBtn.disabled = false;
+          return;
+        }
+        showSuccess(data.message || 'We sent you a new code.');
+        codeEl.value = '';
+        codeEl.focus();
+        startResendCountdown(60);
+      } catch (err) {
+        showError(networkMessage(err));
+        resendBtn.disabled = false;
+      }
+    });
+
+    document.getElementById('change-email-btn').addEventListener('click', () => {
+      clearInterval(resendTimer);
+      resendBtn.disabled = false;
+      resendBtn.textContent = 'Resend code';
+      clearMessages();
+      setStep(false);
+      document.getElementById('email').focus();
+    });
+
     document.addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('signup-btn').click();
+      if (e.key !== 'Enter') return;
+      if (!stepEl.hidden) verifyBtn.click();
+      else document.getElementById('signup-btn').click();
     });
   </script>
   <script src="theme.js"></script>

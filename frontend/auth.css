@@ -452,6 +452,50 @@
 }
 .auth-forgot a:hover { text-decoration: underline; }
 
+/* ── Sign-up step 2: email verification code ── */
+.auth-verify {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.auth-verify[hidden] { display: none; }
+.auth-verify__text {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.auth-verify__text strong { color: var(--text); overflow-wrap: anywhere; }
+
+.auth-field input.auth-code-input {
+  height: 52px;
+  font-family: var(--font-code, monospace);
+  font-size: 1.5rem;
+  letter-spacing: 0.5em;
+  text-align: center;
+  padding-left: 0.5em; /* balances the trailing letter-spacing */
+  background-color: var(--bg-input);
+  border-color: var(--border);
+}
+
+.auth-verify__links {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.auth-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.auth-linkbtn:hover:not(:disabled) { text-decoration: underline; }
+.auth-linkbtn:disabled { color: var(--text-muted); cursor: default; }
+
 /* ── Auth responsive ─────────────────────────── */
 @media (max-width: 480px) {
   .auth-card {

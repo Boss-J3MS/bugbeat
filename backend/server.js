@@ -4,7 +4,9 @@
 //  POST /analyze      → Gemini code analysis
 //  POST /music-search → Gemini music parameters
 //  POST /complexity   → ML complexity analysis
-//  POST /auth/signup  → Register new user
+//  POST /auth/signup  → Start sign-up: checks the email, emails a 6-digit code
+//  POST /auth/signup/verify → Check the code and create the account
+//  POST /auth/signup/resend → Email a new code
 //  POST /auth/login   → Login + get JWT token
 //  POST /auth/google  → Login/signup via Google
 //  GET  /auth/me      → Get current user info
@@ -28,6 +30,7 @@ import helmet        from 'helmet';
 import rateLimit       from 'express-rate-limit';
 import { OAuth2Client } from 'google-auth-library';
 import crypto       from 'crypto';
+import dns          from 'dns';
 import db       from './db.js';
 import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
 
@@ -540,9 +543,82 @@ Rules:
 // AUTH ROUTES
 // ══════════════════════════════════════════════
 
+// ── Sign-up with email verification ────────────
+// Sign-up happens in two steps so made-up emails never become accounts:
+//   1. POST /auth/signup         checks the details and the email's domain,
+//                                saves a pending sign-up, emails a 6-digit code
+//   2. POST /auth/signup/verify  checks the code, then creates the account
+// Pending sign-ups live in email_verifications (not users) until verified.
+const SIGNUP_CODE_MINUTES      = 10;
+const SIGNUP_CODE_MAX_ATTEMPTS = 5;
+const SIGNUP_RESEND_SECONDS    = 60;
+const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/;
+const EMAIL_PATTERN    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Common throwaway-inbox services. Not exhaustive: the emailed code is the
+// real check; this just turns away the most obvious ones up front.
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com', 'guerrillamail.com', 'guerrillamail.info', 'guerrillamail.net',
+  'sharklasers.com', 'grr.la', '10minutemail.com', '10minutemail.net', 'tempmail.com',
+  'temp-mail.org', 'temp-mail.io', 'tempmailo.com', 'tempr.email', 'yopmail.com',
+  'yopmail.net', 'trashmail.com', 'getnada.com', 'nada.email', 'dispostable.com',
+  'maildrop.cc', 'throwawaymail.com', 'fakeinbox.com', 'mintemail.com', 'mohmal.com',
+  'emailondeck.com', 'moakt.com', 'spamgourmet.com', 'mailnesia.com', 'mytemp.email',
+  '1secmail.com', '1secmail.org', '1secmail.net', 'burnermail.io', 'discard.email',
+  'fakemail.net', 'mailcatch.com', 'inboxkitten.com', 'getairmail.com', 'mail.tm',
+  'emailfake.com', 'tmpmail.org', 'tmpmail.net', 'minuteinbox.com', 'mailpoof.com'
+]);
+
+const dnsResolver = new dns.promises.Resolver({ timeout: 3000, tries: 2 });
+
+// Can this email's domain receive mail at all? Rejects made-up domains
+// (e.g. @asdfqwer.com). Returns { ok, reason }. If DNS itself is having
+// trouble, lets the address through; the emailed code still has to arrive.
+async function checkEmailDomain(email) {
+  const domain = email.split('@').pop().toLowerCase();
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domain)) {
+    return { ok: false, reason: 'Temporary / disposable email addresses are not allowed. Please use your real email.' };
+  }
+  try {
+    const records = await dnsResolver.resolveMx(domain);
+    // A "null MX" (single record with an empty exchange) means "this domain
+    // accepts no email".
+    const usable = records.filter((r) => r.exchange && r.exchange !== '.');
+    if (usable.length > 0) return { ok: true };
+    return { ok: false, reason: `The email domain "${domain}" can't receive email. Please check the address.` };
+  } catch (err) {
+    if (err.code === 'ENOTFOUND' || err.code === 'ENODATA' || err.code === 'NXDOMAIN') {
+      return { ok: false, reason: `The email domain "${domain}" doesn't exist or can't receive email. Please check the address.` };
+    }
+    console.warn(`[auth] MX lookup for ${domain} failed (${err.code || err.message}); allowing sign-up to continue`);
+    return { ok: true };
+  }
+}
+
+function makeSignupCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
+}
+
+// The code is stored hashed (with the email mixed in), never as-is.
+function hashSignupCode(email, code) {
+  return crypto.createHash('sha256').update(`${email.toLowerCase()}:${code}`).digest('hex');
+}
+
+// Stricter than authLimiter: every call sends an email.
+const emailCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many verification emails requested. Please wait a while before trying again.' },
+});
+
 // ── POST /auth/signup ──────────────────────────
-app.post('/auth/signup', authLimiter, async (req, res) => {
-  const { username, email, password } = req.body;
+// Step 1: validate, check the email, save a pending sign-up, email a code.
+app.post('/auth/signup', emailCodeLimiter, async (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const email    = String(req.body?.email || '').trim();
+  const password = req.body?.password;
   if (!username || !email || !password) {
     return res.status(400).json({ error: 'All fields are required.' });
   }
@@ -550,7 +626,6 @@ app.post('/auth/signup', authLimiter, async (req, res) => {
   // Restrict usernames to a safe character set so stored values can never
   // break out of HTML/JS when rendered elsewhere (e.g. the admin panel).
   // Letters, numbers, underscore, hyphen, period — 3 to 20 characters.
-  const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/;
   if (!USERNAME_PATTERN.test(username)) {
     return res.status(400).json({
       error: 'Username must be 3-20 characters and can only contain letters, numbers, underscores, hyphens, and periods.'
@@ -558,7 +633,6 @@ app.post('/auth/signup', authLimiter, async (req, res) => {
   }
 
   // Basic email format check + length cap (defense in depth, not a full RFC validator)
-  const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!EMAIL_PATTERN.test(email) || email.length > 254) {
     return res.status(400).json({ error: 'Please enter a valid email address.' });
   }
@@ -568,8 +642,11 @@ app.post('/auth/signup', authLimiter, async (req, res) => {
     return res.status(400).json({ error: passwordCheck.error });
   }
 
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    return res.status(503).json({ error: 'Sign-up email verification is not set up on this server yet.' });
+  }
+
   try {
-    // Check existing
     const [existing] = await db.query(
       'SELECT id FROM users WHERE email = ? OR username = ?',
       [email, username]
@@ -578,54 +655,159 @@ app.post('/auth/signup', authLimiter, async (req, res) => {
       return res.status(409).json({ error: 'Email or username already in use.' });
     }
 
-    // Hash and insert
-    const hash     = await hashPassword(password);
-    const [newUser] = await db.query(
-      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
-      [username, email, hash, 'user']
+    const domainCheck = await checkEmailDomain(email);
+    if (!domainCheck.ok) {
+      return res.status(400).json({ error: domainCheck.reason });
+    }
+
+    // Starting again with the same email replaces the earlier pending sign-up.
+    const code = makeSignupCode();
+    const hash = await hashPassword(password);
+    await db.query('DELETE FROM email_verifications WHERE email = ?', [email]);
+    await db.query(
+      `INSERT INTO email_verifications (email, username, password_hash, code_hash, expires_at, last_sent_at)
+       VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())`,
+      [email, username, hash, hashSignupCode(email, code), SIGNUP_CODE_MINUTES]
     );
 
-    // Generate token
+    await sendSignupCodeEmail(email, username, code);
+
+    res.status(202).json({
+      verificationRequired: true,
+      email,
+      message: `We sent a 6-digit code to ${email}. Enter it below to finish creating your account.`
+    });
+  } catch (err) {
+    console.error('/auth/signup error:', err.message);
+    res.status(500).json({ error: 'Could not send the verification email. Please check the address and try again.' });
+  }
+});
+
+// ── POST /auth/signup/verify ───────────────────
+// Step 2: check the code and create the account.
+app.post('/auth/signup/verify', authLimiter, async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  const code  = String(req.body?.code || '').replace(/\s+/g, '');
+  if (!email || !/^\d{6}$/.test(code)) {
+    return res.status(400).json({ error: 'Please enter the 6-digit code from the email.' });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT id, email, username, password_hash, code_hash, attempts, (expires_at > NOW()) AS still_valid
+         FROM email_verifications WHERE email = ? LIMIT 1`,
+      [email]
+    );
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'No sign-up is waiting for this email. Please fill in the form again.' });
+    }
+    const pending = rows[0];
+
+    if (!pending.still_valid) {
+      return res.status(400).json({ error: 'This code has expired. Click "Resend code" to get a new one.', expired: true });
+    }
+    if (pending.attempts >= SIGNUP_CODE_MAX_ATTEMPTS) {
+      return res.status(400).json({ error: 'Too many wrong codes. Click "Resend code" to get a new one.', expired: true });
+    }
+
+    const given = Buffer.from(hashSignupCode(email, code), 'hex');
+    const saved = Buffer.from(pending.code_hash, 'hex');
+    if (given.length !== saved.length || !crypto.timingSafeEqual(given, saved)) {
+      await db.query('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?', [pending.id]);
+      const left = SIGNUP_CODE_MAX_ATTEMPTS - pending.attempts - 1;
+      return res.status(400).json({
+        error: left > 0
+          ? `That code is incorrect. ${left} ${left === 1 ? 'try' : 'tries'} left.`
+          : 'That code is incorrect. Click "Resend code" to get a new one.',
+        expired: left <= 0
+      });
+    }
+
+    // Someone may have taken the username/email while this was pending.
+    const [taken] = await db.query(
+      'SELECT id FROM users WHERE email = ? OR username = ?',
+      [pending.email, pending.username]
+    );
+    if (taken.length > 0) {
+      await db.query('DELETE FROM email_verifications WHERE id = ?', [pending.id]);
+      return res.status(409).json({ error: 'Email or username already in use. Please sign up again with a different one.' });
+    }
+
+    const [newUser] = await db.query(
+      'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
+      [pending.username, pending.email, pending.password_hash, 'user']
+    );
+    await db.query('DELETE FROM email_verifications WHERE id = ?', [pending.id]);
+
     const token = generateToken({
       userId   : newUser.insertId,
-      email,
-      username,
+      email    : pending.email,
+      username : pending.username,
       role     : 'user'
     });
 
-    // Save session
     const signupExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [
-        newUser.insertId,
-        token,
-        req.ip || '',
-        req.headers['user-agent'] || '',
-        signupExpiry
-      ]
+      [newUser.insertId, token, req.ip || '', req.headers['user-agent'] || '', signupExpiry]
     );
 
-    // Welcome notification
     await db.query(
       `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
-      [
-        newUser.insertId,
-        'Welcome to BugBeat! Submit your first code analysis to get started.',
-        'system'
-      ]
+      [newUser.insertId, 'Welcome to BugBeat! Submit your first code analysis to get started.', 'system']
     );
 
     res.status(201).json({
       message : 'Account created successfully!',
       token,
-      user    : { id: newUser.insertId, username, email, role: 'user' }
+      user    : { id: newUser.insertId, username: pending.username, email: pending.email, role: 'user' }
     });
-
   } catch (err) {
-    console.error('/auth/signup error:', err.message);
-    res.status(500).json({ error: 'Signup failed. Please try again.' });
+    console.error('/auth/signup/verify error:', err.message);
+    res.status(500).json({ error: 'Could not verify the code. Please try again.' });
+  }
+});
+
+// ── POST /auth/signup/resend ───────────────────
+// Emails a new code for a pending sign-up (at most once a minute).
+app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email) {
+    return res.status(400).json({ error: 'Missing email.' });
+  }
+  if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
+    return res.status(503).json({ error: 'Sign-up email verification is not set up on this server yet.' });
+  }
+
+  try {
+    const [rows] = await db.query(
+      `SELECT id, username, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since_sent
+         FROM email_verifications WHERE email = ? LIMIT 1`,
+      [email]
+    );
+    if (rows.length === 0) {
+      return res.status(400).json({ error: 'No sign-up is waiting for this email. Please fill in the form again.' });
+    }
+    const pending = rows[0];
+    if (pending.since_sent < SIGNUP_RESEND_SECONDS) {
+      const wait = SIGNUP_RESEND_SECONDS - pending.since_sent;
+      return res.status(429).json({ error: `Please wait ${wait} seconds before requesting another code.`, retryAfter: wait });
+    }
+
+    const code = makeSignupCode();
+    await db.query(
+      `UPDATE email_verifications
+          SET code_hash = ?, attempts = 0, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE), last_sent_at = NOW()
+        WHERE id = ?`,
+      [hashSignupCode(email, code), SIGNUP_CODE_MINUTES, pending.id]
+    );
+    await sendSignupCodeEmail(email, pending.username, code);
+
+    res.json({ message: `We sent a new code to ${email}.` });
+  } catch (err) {
+    console.error('/auth/signup/resend error:', err.message);
+    res.status(500).json({ error: 'Could not send a new code. Please try again.' });
   }
 });
 
@@ -927,6 +1109,46 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+
+async function sendBrevoEmail({ to, subject, text, html }) {
+  const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'api-key': BREVO_API_KEY,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({
+      sender: { name: 'BugBeat', email: BREVO_SENDER_EMAIL },
+      to: [{ email: to }],
+      subject,
+      textContent: text,
+      htmlContent: html
+    })
+  });
+  if (!response.ok) {
+    throw new Error(`Brevo responded ${response.status}: ${await response.text()}`);
+  }
+}
+
+async function sendSignupCodeEmail(toEmail, username, code) {
+  const name = escapeHtml(username || 'there');
+  await sendBrevoEmail({
+    to: toEmail,
+    subject: `${code} is your BugBeat verification code`,
+    text:
+      `Hi ${username || 'there'},\n\n` +
+      `Your BugBeat verification code is: ${code}\n\n` +
+      `Enter it on the sign-up page to finish creating your account. It expires in ${SIGNUP_CODE_MINUTES} minutes.\n\n` +
+      `If you didn't try to sign up for BugBeat, you can ignore this email.\n\n— BugBeat`,
+    html:
+      `<p>Hi ${name},</p>` +
+      `<p>Your BugBeat verification code is:</p>` +
+      `<p style="font-size:28px;font-weight:700;letter-spacing:6px;margin:12px 0">${code}</p>` +
+      `<p>Enter it on the sign-up page to finish creating your account. It expires in ${SIGNUP_CODE_MINUTES} minutes.</p>` +
+      `<p style="font-size:13px;color:#666">If you didn't try to sign up for BugBeat, you can ignore this email.</p>`
+  });
 }
 
 async function sendPasswordResetEmail(toEmail, username, link) {
