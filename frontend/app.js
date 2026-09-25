@@ -258,8 +258,11 @@ if (notifViewAll) {
 }
 
 if (notifBtn && notifDropdown && notifWrap) {
-  notifBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
+  // No stopPropagation here: the ☰ menu closes itself on any click
+  // outside it (menu.js), and stopping this click kept it open on top of
+  // this dropdown. Clicks inside #notif-wrap are ignored by the
+  // close-on-outside-click listener below anyway.
+  notifBtn.addEventListener('click', () => {
     const isOpen = !notifDropdown.hidden;
     notifDropdown.hidden = isOpen;
     notifBtn.setAttribute('aria-expanded', String(!isOpen));
