@@ -14,9 +14,9 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=6" />
+  <link rel="stylesheet" href="style.css?v=7" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=5" />
+  <link rel="stylesheet" href="admin.css?v=6" />
 </head>
 <body>
 
@@ -509,7 +509,7 @@
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
       document.getElementById('risk-breakdown').innerHTML = (data.risk_breakdown || []).map(r => `
         <div class="admin-breakdown__row">
-          <span class="admin-breakdown__label" style="color:${riskColors[r.risk_level?.toLowerCase()] || '#fff'}">${esc(r.risk_level)}</span>
+          <span class="admin-breakdown__label" style="color:${riskColors[r.risk_level?.toLowerCase()] || '#fff'}">${esc(riskLabel(r.risk_level))}</span>
           <span class="admin-breakdown__val">${esc(r.count)}</span>
         </div>`).join('') || '<p class="admin-empty">No data yet</p>';
 
@@ -562,7 +562,7 @@
                 data-action="delete-user" data-id="${esc(u.id)}" data-username="${esc(u.username)}">
                 Delete
               </button>
-            ` : '<span class="admin-empty">You</span>'}
+            ` : '<span class="admin-empty-inline">You</span>'}
           </td>
         </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No users found</td></tr>';
     }
@@ -632,7 +632,7 @@
           <td>${esc(a.language)}</td>
           <td>${esc(a.total_lines)}</td>
           <td>${esc(a.issues_found)}</td>
-          <td><span style="color:${riskColors[a.risk_level?.toLowerCase()] || '#fff'}">${esc(a.risk_level)}</span></td>
+          <td><span style="color:${riskColors[a.risk_level?.toLowerCase()] || '#fff'}">${esc(riskLabel(a.risk_level))}</span></td>
           <td>${esc(a.fusion_score)}</td>
           <td>${formatDate(a.created_at)}</td>
         </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No analyses yet</td></tr>';
@@ -775,6 +775,13 @@
       }
       loadInvites();
     });
+
+    // risk_level is stored lowercase ('medium'); show it as 'Medium' like
+    // the History panel does.
+    function riskLabel(r) {
+      const s = String(r ?? '');
+      return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '—';
+    }
 
     function formatDate(d) {
       return d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';

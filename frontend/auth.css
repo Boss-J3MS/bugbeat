@@ -251,17 +251,16 @@
 .auth-field input {
   font-family: var(--font-ui);
   font-size: 0.9rem;
-  /* Starts blended into the card — background matches the card itself
-     and the border is transparent, so the field reads as quiet/minimal
-     until its label (or the field itself) is hovered, or it's focused.
-     The gradient layer underneath is the click-only underline from
-     before, animated independently via background-size. */
+  /* A faint border is always shown so the fields are visible on phones
+     (no hover there); hovering or focusing brightens the box. The
+     gradient layer underneath is the click-only underline, animated
+     independently via background-size. */
   background-color: var(--bg-panel);
   background-image: linear-gradient(var(--accent), var(--accent));
   background-repeat: no-repeat;
   background-position: left bottom;
   background-size: 0% 2px;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   color: var(--text);
   padding: 0.6rem 0.85rem;

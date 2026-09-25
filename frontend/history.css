@@ -529,32 +529,46 @@
 
 .cb-history-error { color: var(--critical); }
 
+/* "← Sessions" only exists on phones (see below). */
+.cb-history__back { display: none; }
+
 /* ── Responsive ───────────────────────────────── */
+/* Phones/tablets: one thing at a time. The session list fills the panel;
+   tapping a session shows its details full-size with a "← Sessions"
+   button back (history.js toggles .cb-history--detail on the panel). */
 @media (max-width: 768px) {
   .cb-history__inner { width: 100vw; }
 
+  /* Header: title + count, with ✕ pinned top-right; search on its own
+     full-width row; filter buttons share the row below. */
+  .cb-history__header {
+    position: relative;
+    gap: 0.5rem;
+    padding: 0.6rem 0.75rem;
+  }
+  .cb-history__header-left { padding-right: 2.75rem; }
+  .cb-history__header-right { width: 100%; gap: 0.4rem; }
+  .cb-history__search { width: auto !important; flex: 1 1 100%; min-width: 0; }
+  .cb-history__filters { flex: 1 1 100%; gap: 4px; }
+  .cb-history-filter-btn { flex: 1 1 0; padding: 0 0.3rem; height: 30px; }
+  #history-close-btn { position: absolute; top: 0.5rem; right: 0.75rem; }
+
   .cb-history__body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 1fr;
   }
+  .cb-history__list-col { border-right: none; }
+  .cb-history__detail-col { display: none; }
 
-  .cb-history__list-col {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-    max-height: 240px;
-  }
+  .cb-history--detail .cb-history__list-col   { display: none; }
+  .cb-history--detail .cb-history__detail-col { display: flex; }
+  .cb-history__detail { overflow-y: auto; }
+
+  .cb-history__back { display: inline-flex; flex-shrink: 0; }
+  .cb-history__detail-header { flex-wrap: wrap; gap: 0.5rem; padding: 10px 12px; }
+  .cb-history__detail-title { flex: 1 1 auto; min-width: 0; }
 
   .cb-history__meta-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-
-  .cb-history__search { width: 140px !important; }
-}
-
-@media (max-width: 480px) {
-  .cb-history__header { gap: 0.4rem; }
-  .cb-history__filters { gap: 2px; }
-  .cb-history-filter-btn { font-size: 0.65rem; padding: 0 0.4rem; }
-  .cb-history__meta-grid { grid-template-columns: 1fr 1fr; }
-  .cb-history__search { display: none; }
-}
+}

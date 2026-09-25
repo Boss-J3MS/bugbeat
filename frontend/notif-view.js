@@ -288,7 +288,7 @@
           <div><span>Language</span><strong>${esc(a.language || '—')}</strong></div>
           <div><span>Lines</span><strong>${esc(a.total_lines ?? '—')}</strong></div>
           <div><span>Issues</span><strong>${esc(a.issues_found ?? '—')}</strong></div>
-          <div><span>Risk</span><strong>${esc(a.risk_level || '—')}</strong></div>
+          <div><span>Risk</span><strong>${esc(a.risk_level ? String(a.risk_level).charAt(0).toUpperCase() + String(a.risk_level).slice(1).toLowerCase() : '—')}</strong></div>
           <div><span>Score</span><strong>${isNaN(score) ? '—' : score.toFixed(2)}</strong></div>
         </div>`;
     } catch (err) {

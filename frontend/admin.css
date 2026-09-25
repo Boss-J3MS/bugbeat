@@ -40,6 +40,13 @@
 .admin-nav__btn.active { background: var(--bg-input); color: var(--accent); border-color: var(--accent); }
 
 .admin-main {
+  /* width/min-width: without these, a wide table's minimum width made
+     the whole page wider than a phone screen (body is a flex column, and
+     flex items won't shrink below their content by default), so the page
+     scrolled sideways instead of just the table. */
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   max-width: 1100px;
   margin: 0 auto;
   padding: 1.5rem;

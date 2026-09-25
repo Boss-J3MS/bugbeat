@@ -65,8 +65,18 @@ async function openHistorySession(id) {
   await selectHistorySession(id);
 }
 
+// "← Sessions" (phones only): back to the list.
+const historyBackBtn = document.getElementById('history-back-btn');
+if (historyBackBtn) {
+  historyBackBtn.addEventListener('click', () => {
+    historyPanel.classList.remove('cb-history--detail');
+  });
+}
+
 // ── Load history from backend ──────────────────
 async function loadHistory() {
+  // Reopening History starts from the list.
+  historyPanel?.classList.remove('cb-history--detail');
   try {
     historyList.innerHTML = `<div class="cb-history-loading">Loading sessions…</div>`;
     const res  = await fetch(`${BACKEND_URL}/history`, { headers: authHeaders() });
@@ -147,7 +157,7 @@ function renderHistoryList() {
           <span class="cb-history-card__time">${formatHistoryDate(s.created_at)}</span>
         </div>
         <div class="cb-history-card__risk-row">
-          <span class="cb-history-card__risk-label" style="color:${riskColor(riskLower)}">${s.risk_level || 'Low'}</span>
+          <span class="cb-history-card__risk-label" style="color:${riskColor(riskLower)}">${riskText(s.risk_level || 'low')}</span>
           <div class="cb-history-card__risk-bar">
             <div class="cb-history-card__risk-fill" style="width:${Math.round(score * 100)}%;background:${riskColor(riskLower)}"></div>
           </div>
@@ -167,6 +177,8 @@ function renderHistoryList() {
 async function selectHistorySession(id) {
   activeHistoryId = id;
   renderHistoryList();
+  // Phones: show this session on its own (see history.css).
+  historyPanel?.classList.add('cb-history--detail');
 
   // Show loading in detail panel
   historyEmpty.hidden  = true;
@@ -201,7 +213,7 @@ function renderHistoryDetail(data) {
   document.getElementById('h-meta-lines').textContent  = analysis.total_lines || '—';
   document.getElementById('h-meta-issues').textContent = analysis.issues_found || '—';
   document.getElementById('h-meta-issues').style.color = riskColor(riskLower);
-  document.getElementById('h-meta-risk').textContent   = analysis.risk_level  || '—';
+  document.getElementById('h-meta-risk').textContent   = analysis.risk_level ? riskText(analysis.risk_level) : '—';
   document.getElementById('h-meta-risk').style.color   = riskColor(riskLower);
   document.getElementById('h-fusion-score').textContent = score.toFixed(2);
   document.getElementById('h-fusion-score').style.color = riskColor(riskLower);
@@ -295,7 +307,7 @@ function doRestoreSession(d) {
 
   // 9. Show success feedback
   if (typeof setMusicStatus === 'function') {
-    setMusicStatus(`✅ Session restored — ${analysis.language} · ${analysis.risk_level} risk`, 'ok');
+    setMusicStatus(`✅ Session restored — ${analysis.language} · ${riskText(analysis.risk_level)} risk`, 'ok');
   }
 }
 
@@ -323,6 +335,12 @@ function goHistoryPage(page) {
 }
 
 // ── Helpers ────────────────────────────────────
+// risk_level is stored lowercase ('medium'); show 'Medium'.
+function riskText(r) {
+  const s = String(r ?? '');
+  return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '';
+}
+
 function riskColor(risk) {
   const map = {
     'low':       '#1de4a8',
