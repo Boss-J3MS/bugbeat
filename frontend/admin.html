@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=4" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=2" />
+  <link rel="stylesheet" href="admin.css?v=3" />
 </head>
 <body>
 
@@ -41,6 +41,12 @@
   </header>
 
   <main class="admin-main">
+
+    <!-- Shown while the backend is waking up or when something failed to load. -->
+    <div id="admin-status" class="admin-status" role="status" aria-live="polite" hidden>
+      <span id="admin-status-msg"></span>
+      <button type="button" id="admin-status-retry" class="cb-btn cb-btn--ghost admin-btn-sm" hidden>Retry</button>
+    </div>
 
     <!-- ── STATS TAB ─────────────────────────── -->
     <div id="tab-stats" class="admin-tab active">
@@ -229,6 +235,86 @@
       return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
     }
 
+    // ── Loading: retries + clear errors ────────
+    // The backend is on Render's free plan, which goes to sleep when idle
+    // and takes up to about a minute to wake. Requests made while it's
+    // waking can fail or come back as an error page, and before this the
+    // page just stayed blank. adminFetch retries those failures for a
+    // while (showing a "waking up" note), sends you to the login page if
+    // your session has ended, and otherwise throws an error the caller
+    // shows in place of the data.
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const RETRY_DELAYS = [2000, 4000, 8000, 15000, 20000];   // ~50s in total
+    let waking = 0;   // how many requests are currently waiting on a retry
+
+    function setStatus(text, { retry = false } = {}) {
+      const box = document.getElementById('admin-status');
+      document.getElementById('admin-status-msg').textContent = text || '';
+      document.getElementById('admin-status-retry').hidden = !retry;
+      box.hidden = !text;
+    }
+
+    function sessionEnded() {
+      localStorage.removeItem('cb_token');
+      localStorage.removeItem('cb_user');
+      window.location.href = 'login.html';
+    }
+
+    async function adminFetch(path, options = {}) {
+      for (let attempt = 0; ; attempt++) {
+        let res = null;
+        try {
+          res = await fetch(`${BACKEND_URL}${path}`, { ...options, headers: authHeaders() });
+        } catch (e) {
+          // Network error: server asleep/restarting, or offline.
+        }
+
+        // Logged out elsewhere, token expired, or no longer an admin.
+        if (res && (res.status === 401 || res.status === 403)) {
+          sessionEnded();
+          throw new Error('Your session has ended. Please log in again.');
+        }
+
+        const data = res ? await res.json().catch(() => null) : null;
+        if (res && res.ok && data) {
+          if (attempt > 0 && --waking === 0) setStatus('');
+          return data;
+        }
+
+        // Retry only what waking up / overload looks like: no response,
+        // 502/503/504 from Render's proxy, or 429. A plain 500 is a real
+        // error from our own code (e.g. the database is paused), which
+        // retrying won't fix, so it's shown straight away.
+        const retryable = !res || [429, 502, 503, 504].includes(res.status) || (!data && res.status >= 500);
+        if (!retryable || attempt >= RETRY_DELAYS.length) {
+          if (attempt > 0 && --waking === 0) setStatus('');
+          throw new Error((data && data.error) ||
+            (res ? `The server returned an error (${res.status}).` : 'Could not reach the server.'));
+        }
+
+        if (attempt === 0) waking++;
+        setStatus('Waking up the server… this can take up to a minute on the free plan.');
+        await sleep(RETRY_DELAYS[attempt]);
+      }
+    }
+
+    // A table row / box saying what failed, with a Retry button.
+    function errorRow(cols, message, loader) {
+      return `<tr><td colspan="${cols}" class="admin-empty">
+        ${esc(message)}
+        <button type="button" class="cb-btn cb-btn--ghost admin-btn-sm admin-retry" data-retry="${loader}">Retry</button>
+      </td></tr>`;
+    }
+    const LOADERS = {};
+    document.addEventListener('click', e => {
+      const btn = e.target.closest('button[data-retry]');
+      if (btn && LOADERS[btn.dataset.retry]) LOADERS[btn.dataset.retry]();
+    });
+    document.getElementById('admin-status-retry').addEventListener('click', () => {
+      setStatus('');
+      loadAll();
+    });
+
     // Escapes text for safe interpolation into innerHTML. All fields that
     // originate from user input (username, email, etc.) must go through
     // this before being rendered — otherwise a malicious username stored
@@ -269,8 +355,16 @@
 
     // ── Load stats ─────────────────────────────
     async function loadStats() {
-      const res  = await fetch(`${BACKEND_URL}/admin/stats`, { headers: authHeaders() });
-      const data = await res.json();
+      let data;
+      try {
+        data = await adminFetch('/admin/stats');
+      } catch (err) {
+        ['risk-breakdown', 'lang-breakdown', 'recent-users'].forEach(id => {
+          document.getElementById(id).innerHTML =
+            `<p class="admin-empty">${esc(err.message)} <button type="button" class="cb-btn cb-btn--ghost admin-btn-sm admin-retry" data-retry="stats">Retry</button></p>`;
+        });
+        return;
+      }
 
       document.getElementById('stat-users').textContent    = data.totals.users;
       document.getElementById('stat-analyses').textContent = data.totals.analyses;
@@ -283,21 +377,21 @@
       // 'critical' as the key, or every badge here falls through to the
       // '#fff' fallback since nothing actually matches 'very_high'.
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
-      document.getElementById('risk-breakdown').innerHTML = data.risk_breakdown.map(r => `
+      document.getElementById('risk-breakdown').innerHTML = (data.risk_breakdown || []).map(r => `
         <div class="admin-breakdown__row">
           <span class="admin-breakdown__label" style="color:${riskColors[r.risk_level?.toLowerCase()] || '#fff'}">${esc(r.risk_level)}</span>
           <span class="admin-breakdown__val">${esc(r.count)}</span>
         </div>`).join('') || '<p class="admin-empty">No data yet</p>';
 
       // Language breakdown
-      document.getElementById('lang-breakdown').innerHTML = data.lang_breakdown.map(l => `
+      document.getElementById('lang-breakdown').innerHTML = (data.lang_breakdown || []).map(l => `
         <div class="admin-breakdown__row">
           <span class="admin-breakdown__label">${esc(l.language)}</span>
           <span class="admin-breakdown__val">${esc(l.count)}</span>
         </div>`).join('') || '<p class="admin-empty">No data yet</p>';
 
       // Recent users
-      document.getElementById('recent-users').innerHTML = data.recent_users.map(u => `
+      document.getElementById('recent-users').innerHTML = (data.recent_users || []).map(u => `
         <div class="admin-breakdown__row">
           <span class="admin-breakdown__label">${esc(u.username)}</span>
           <span class="admin-breakdown__val admin-role admin-role--${esc(u.role)}">${esc(u.role)}</span>
@@ -307,10 +401,13 @@
     // ── Load users ─────────────────────────────
     let allUsers = [];
     async function loadUsers() {
-      const res  = await fetch(`${BACKEND_URL}/admin/users`, { headers: authHeaders() });
-      const data = await res.json();
-      allUsers   = data.users;
-      renderUsers(allUsers);
+      try {
+        const data = await adminFetch('/admin/users');
+        allUsers   = data.users || [];
+        renderUsers(allUsers);
+      } catch (err) {
+        document.getElementById('users-tbody').innerHTML = errorRow(8, err.message, 'users');
+      }
     }
 
     function renderUsers(users) {
@@ -365,30 +462,36 @@
       const newRole = currentRole === 'admin' ? 'user' : 'admin';
       const ok = await confirm(`Change this user's role to "${newRole}"?`);
       if (!ok) return;
-      await fetch(`${BACKEND_URL}/admin/users/${id}/role`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ role: newRole })
-      });
+      try {
+        await adminFetch(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role: newRole }) });
+      } catch (err) {
+        setStatus(`Could not change the role: ${err.message}`);
+      }
       loadUsers();
     }
 
     async function deleteUser(id, username) {
       const ok = await confirm(`Delete user "${username}"? This cannot be undone.`);
       if (!ok) return;
-      await fetch(`${BACKEND_URL}/admin/users/${id}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-      });
+      try {
+        await adminFetch(`/admin/users/${id}`, { method: 'DELETE' });
+      } catch (err) {
+        setStatus(`Could not delete the user: ${err.message}`);
+      }
       loadUsers();
     }
 
     // ── Load analyses ──────────────────────────
     async function loadAnalyses() {
-      const res  = await fetch(`${BACKEND_URL}/admin/analyses`, { headers: authHeaders() });
-      const data = await res.json();
+      let data;
+      try {
+        data = await adminFetch('/admin/analyses');
+      } catch (err) {
+        document.getElementById('analyses-tbody').innerHTML = errorRow(8, err.message, 'analyses');
+        return;
+      }
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
-      document.getElementById('analyses-tbody').innerHTML = data.analyses.map(a => `
+      document.getElementById('analyses-tbody').innerHTML = (data.analyses || []).map(a => `
         <tr>
           <td>${esc(a.id)}</td>
           <td>${esc(a.username)}</td>
@@ -403,8 +506,13 @@
 
     // ── Load bug reports ───────────────────────
     async function loadBugReports() {
-      const res  = await fetch(`${BACKEND_URL}/admin/bug-reports`, { headers: authHeaders() });
-      const data = await res.json();
+      let data;
+      try {
+        data = await adminFetch('/admin/bug-reports');
+      } catch (err) {
+        document.getElementById('bugreports-tbody').innerHTML = errorRow(6, err.message, 'bugreports');
+        return;
+      }
       const STATUS_LABELS = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
       document.getElementById('bugreports-tbody').innerHTML = (data.bug_reports || []).map(b => `
         <tr>
@@ -426,11 +534,15 @@
     document.getElementById('bugreports-tbody').addEventListener('change', async e => {
       const sel = e.target.closest('select[data-action="bugreport-status"]');
       if (!sel) return;
-      await fetch(`${BACKEND_URL}/admin/bug-reports/${sel.dataset.id}/status`, {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({ status: sel.value })
-      });
+      try {
+        await adminFetch(`/admin/bug-reports/${sel.dataset.id}/status`, {
+          method: 'PATCH',
+          body: JSON.stringify({ status: sel.value })
+        });
+      } catch (err) {
+        setStatus(`Could not update the bug report: ${err.message}`);
+        loadBugReports();
+      }
     });
 
     // ── Admin invites ──────────────────────────
@@ -448,9 +560,7 @@
     async function loadInvites() {
       const tbody = document.getElementById('invites-tbody');
       try {
-        const res  = await fetch(`${BACKEND_URL}/admin/invites`, { headers: authHeaders() });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Could not load invites.');
+        const data = await adminFetch('/admin/invites');
         tbody.innerHTML = data.invites.map(i => {
           const st = INVITE_STATUS[i.status] || INVITE_STATUS.expired;
           const label = i.status === 'used' && i.used_by ? `Used by ${esc(i.used_by)}` : st.label;
@@ -470,7 +580,7 @@
           </tr>`;
         }).join('') || '<tr><td colspan="7" class="admin-empty">No invites yet</td></tr>';
       } catch (err) {
-        tbody.innerHTML = `<tr><td colspan="7" class="admin-empty">${esc(err.message)}</td></tr>`;
+        tbody.innerHTML = errorRow(7, err.message, 'invites');
       }
     }
 
@@ -485,13 +595,10 @@
       btn.disabled = true;
       btn.textContent = 'Creating…';
       try {
-        const res  = await fetch(`${BACKEND_URL}/admin/invites`, {
+        const data = await adminFetch('/admin/invites', {
           method: 'POST',
-          headers: authHeaders(),
           body: JSON.stringify({ email })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Could not create the invite.');
         document.getElementById('invite-link').value = data.link;
         document.getElementById('invite-copy-btn').textContent = 'Copy';
         result.hidden = false;
@@ -523,10 +630,11 @@
       if (!btn) return;
       const ok = await confirm('Revoke this invite? The link will stop working.');
       if (!ok) return;
-      await fetch(`${BACKEND_URL}/admin/invites/${btn.dataset.id}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-      });
+      try {
+        await adminFetch(`/admin/invites/${btn.dataset.id}`, { method: 'DELETE' });
+      } catch (err) {
+        setStatus(`Could not revoke the invite: ${err.message}`);
+      }
       loadInvites();
     });
 
@@ -535,11 +643,14 @@
     }
 
     // ── Init ───────────────────────────────────
-    loadStats();
-    loadUsers();
-    loadAnalyses();
-    loadBugReports();
-    loadInvites();
+    Object.assign(LOADERS, {
+      stats: loadStats, users: loadUsers, analyses: loadAnalyses,
+      bugreports: loadBugReports, invites: loadInvites
+    });
+    function loadAll() {
+      Object.values(LOADERS).forEach(load => load());
+    }
+    loadAll();
   </script>
   <script src="theme.js"></script>
   <script src="logout.js?v=2"></script>

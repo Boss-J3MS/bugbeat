@@ -309,3 +309,20 @@
 .admin-invite-status--used   { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border); }
 .admin-invite-status--off    { background: var(--critical-bg); color: var(--critical); border: 1px solid transparent; }
 .admin-empty-inline { color: var(--text-muted); font-style: italic; }
+
+/* ── Loading status banner ───────────────────── */
+.admin-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.8rem;
+  color: var(--text);
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+}
+.admin-status[hidden] { display: none; }
+.admin-retry { margin-left: 0.5rem; }
