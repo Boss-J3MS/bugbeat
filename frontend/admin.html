@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=4" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=3" />
+  <link rel="stylesheet" href="admin.css?v=4" />
 </head>
 <body>
 
@@ -45,7 +45,6 @@
     <!-- Shown while the backend is waking up or when something failed to load. -->
     <div id="admin-status" class="admin-status" role="status" aria-live="polite" hidden>
       <span id="admin-status-msg"></span>
-      <button type="button" id="admin-status-retry" class="cb-btn cb-btn--ghost admin-btn-sm" hidden>Retry</button>
     </div>
 
     <!-- ── STATS TAB ─────────────────────────── -->
@@ -73,15 +72,15 @@
       <div class="admin-row">
         <div class="admin-card">
           <h3 class="admin-card__title">Risk Breakdown</h3>
-          <div id="risk-breakdown" class="admin-breakdown"></div>
+          <div id="risk-breakdown" class="admin-breakdown"><p class="admin-empty">Loading…</p></div>
         </div>
         <div class="admin-card">
           <h3 class="admin-card__title">Top Languages</h3>
-          <div id="lang-breakdown" class="admin-breakdown"></div>
+          <div id="lang-breakdown" class="admin-breakdown"><p class="admin-empty">Loading…</p></div>
         </div>
         <div class="admin-card">
           <h3 class="admin-card__title">Recent Users</h3>
-          <div id="recent-users" class="admin-breakdown"></div>
+          <div id="recent-users" class="admin-breakdown"><p class="admin-empty">Loading…</p></div>
         </div>
       </div>
     </div>
@@ -106,7 +105,7 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="users-tbody"></tbody>
+          <tbody id="users-tbody"><tr><td colspan="8" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -128,7 +127,7 @@
               <th>Date</th>
             </tr>
           </thead>
-          <tbody id="analyses-tbody"></tbody>
+          <tbody id="analyses-tbody"><tr><td colspan="8" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -148,7 +147,7 @@
               <th>Status</th>
             </tr>
           </thead>
-          <tbody id="bugreports-tbody"></tbody>
+          <tbody id="bugreports-tbody"><tr><td colspan="6" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -191,7 +190,7 @@
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="invites-tbody"></tbody>
+          <tbody id="invites-tbody"><tr><td colspan="7" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -235,23 +234,34 @@
       return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
     }
 
-    // ── Loading: retries + clear errors ────────
+    // ── Loading: automatic retries ─────────────
     // The backend is on Render's free plan, which goes to sleep when idle
     // and takes up to about a minute to wake. Requests made while it's
     // waking can fail or come back as an error page, and before this the
     // page just stayed blank. adminFetch retries those failures for a
-    // while (showing a "waking up" note), sends you to the login page if
-    // your session has ended, and otherwise throws an error the caller
-    // shows in place of the data.
+    // while (showing a "waking up" note) and sends you to the login page
+    // if your session has ended. If a section still fails after that, it
+    // keeps showing "Loading…" and is tried again on its own (see
+    // loadFailed below), so there's nothing to click.
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const RETRY_DELAYS = [2000, 4000, 8000, 15000, 20000];   // ~50s in total
     let waking = 0;   // how many requests are currently waiting on a retry
 
-    function setStatus(text, { retry = false } = {}) {
-      const box = document.getElementById('admin-status');
+    const WAKING_MSG   = 'Waking up the server… this can take up to a minute on the free plan.';
+    const RETRYING_MSG = "Some data didn't load yet. Trying again automatically…";
+
+    function setStatus(text) {
       document.getElementById('admin-status-msg').textContent = text || '';
-      document.getElementById('admin-status-retry').hidden = !retry;
-      box.hidden = !text;
+      document.getElementById('admin-status').hidden = !text;
+    }
+
+    // Shows the "trying again" note while any section is still failing,
+    // and clears the loading notes once everything has loaded. Leaves
+    // other messages (e.g. "Could not delete the user") alone.
+    function refreshStatus() {
+      const current = document.getElementById('admin-status-msg').textContent;
+      if (failed.size) setStatus(RETRYING_MSG);
+      else if (current === RETRYING_MSG || current === WAKING_MSG) setStatus('');
     }
 
     function sessionEnded() {
@@ -272,47 +282,83 @@
         // Logged out elsewhere, token expired, or no longer an admin.
         if (res && (res.status === 401 || res.status === 403)) {
           sessionEnded();
-          throw new Error('Your session has ended. Please log in again.');
+          throw Object.assign(new Error('Your session has ended. Please log in again.'), { sessionEnded: true });
         }
 
         const data = res ? await res.json().catch(() => null) : null;
         if (res && res.ok && data) {
-          if (attempt > 0 && --waking === 0) setStatus('');
+          if (attempt > 0 && --waking === 0) refreshStatus();
           return data;
         }
 
-        // Retry only what waking up / overload looks like: no response,
-        // 502/503/504 from Render's proxy, or 429. A plain 500 is a real
-        // error from our own code (e.g. the database is paused), which
-        // retrying won't fix, so it's shown straight away.
+        // Retry here only what waking up / overload looks like: no
+        // response, 502/503/504 from Render's proxy, or 429. A plain 500
+        // comes from our own code (e.g. a dropped database connection), so
+        // it's handed back straight away and the section's automatic retry
+        // (loadFailed) tries it again a few seconds later.
         const retryable = !res || [429, 502, 503, 504].includes(res.status) || (!data && res.status >= 500);
         if (!retryable || attempt >= RETRY_DELAYS.length) {
-          if (attempt > 0 && --waking === 0) setStatus('');
+          if (attempt > 0 && --waking === 0) refreshStatus();
           throw new Error((data && data.error) ||
             (res ? `The server returned an error (${res.status}).` : 'Could not reach the server.'));
         }
 
         if (attempt === 0) waking++;
-        setStatus('Waking up the server… this can take up to a minute on the free plan.');
+        setStatus(WAKING_MSG);
         await sleep(RETRY_DELAYS[attempt]);
       }
     }
 
-    // A table row / box saying what failed, with a Retry button.
-    function errorRow(cols, message, loader) {
-      return `<tr><td colspan="${cols}" class="admin-empty">
-        ${esc(message)}
-        <button type="button" class="cb-btn cb-btn--ghost admin-btn-sm admin-retry" data-retry="${loader}">Retry</button>
-      </td></tr>`;
+    // Placeholder shown in a section until its data arrives.
+    function loadingRow(cols) {
+      return `<tr><td colspan="${cols}" class="admin-empty">Loading…</td></tr>`;
     }
+    const LOADING_BOX = '<p class="admin-empty">Loading…</p>';
+
+    // ── Automatic retry for sections that failed to load ──
+    // A failed section is tried again after 5s, 10s, 20s, then every 30s
+    // until it loads. Coming back to the tab or reconnecting to the
+    // internet tries straight away.
     const LOADERS = {};
-    document.addEventListener('click', e => {
-      const btn = e.target.closest('button[data-retry]');
-      if (btn && LOADERS[btn.dataset.retry]) LOADERS[btn.dataset.retry]();
-    });
-    document.getElementById('admin-status-retry').addEventListener('click', () => {
-      setStatus('');
-      loadAll();
+    const AUTO_RETRY_DELAYS = [5000, 10000, 20000, 30000];
+    const failed  = new Map();   // section name -> { tries, timer }
+    const running = new Set();   // sections currently loading
+
+    function runLoader(name) {
+      if (running.has(name)) return;
+      running.add(name);
+      Promise.resolve(LOADERS[name]()).finally(() => running.delete(name));
+    }
+
+    function loadFailed(name, err) {
+      if (err && err.sessionEnded) return;   // already going to the login page
+      console.warn(`[admin] ${name} did not load, trying again:`, err && err.message);
+      const entry = failed.get(name) || { tries: 0, timer: null };
+      clearTimeout(entry.timer);
+      const delay = AUTO_RETRY_DELAYS[Math.min(entry.tries, AUTO_RETRY_DELAYS.length - 1)];
+      entry.tries++;
+      entry.timer = setTimeout(() => runLoader(name), delay);
+      failed.set(name, entry);
+      refreshStatus();
+    }
+
+    function loadSucceeded(name) {
+      const entry = failed.get(name);
+      if (!entry) return;
+      clearTimeout(entry.timer);
+      failed.delete(name);
+      refreshStatus();
+    }
+
+    function retryFailedNow() {
+      for (const [name, entry] of failed) {
+        clearTimeout(entry.timer);
+        runLoader(name);
+      }
+    }
+    window.addEventListener('online', retryFailedNow);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) retryFailedNow();
     });
 
     // Escapes text for safe interpolation into innerHTML. All fields that
@@ -360,11 +406,12 @@
         data = await adminFetch('/admin/stats');
       } catch (err) {
         ['risk-breakdown', 'lang-breakdown', 'recent-users'].forEach(id => {
-          document.getElementById(id).innerHTML =
-            `<p class="admin-empty">${esc(err.message)} <button type="button" class="cb-btn cb-btn--ghost admin-btn-sm admin-retry" data-retry="stats">Retry</button></p>`;
+          document.getElementById(id).innerHTML = LOADING_BOX;
         });
+        loadFailed('stats', err);
         return;
       }
+      loadSucceeded('stats');
 
       document.getElementById('stat-users').textContent    = data.totals.users;
       document.getElementById('stat-analyses').textContent = data.totals.analyses;
@@ -405,8 +452,10 @@
         const data = await adminFetch('/admin/users');
         allUsers   = data.users || [];
         renderUsers(allUsers);
+        loadSucceeded('users');
       } catch (err) {
-        document.getElementById('users-tbody').innerHTML = errorRow(8, err.message, 'users');
+        document.getElementById('users-tbody').innerHTML = loadingRow(8);
+        loadFailed('users', err);
       }
     }
 
@@ -487,9 +536,11 @@
       try {
         data = await adminFetch('/admin/analyses');
       } catch (err) {
-        document.getElementById('analyses-tbody').innerHTML = errorRow(8, err.message, 'analyses');
+        document.getElementById('analyses-tbody').innerHTML = loadingRow(8);
+        loadFailed('analyses', err);
         return;
       }
+      loadSucceeded('analyses');
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
       document.getElementById('analyses-tbody').innerHTML = (data.analyses || []).map(a => `
         <tr>
@@ -510,9 +561,11 @@
       try {
         data = await adminFetch('/admin/bug-reports');
       } catch (err) {
-        document.getElementById('bugreports-tbody').innerHTML = errorRow(6, err.message, 'bugreports');
+        document.getElementById('bugreports-tbody').innerHTML = loadingRow(6);
+        loadFailed('bugreports', err);
         return;
       }
+      loadSucceeded('bugreports');
       const STATUS_LABELS = { open: 'Open', in_progress: 'In Progress', resolved: 'Resolved' };
       document.getElementById('bugreports-tbody').innerHTML = (data.bug_reports || []).map(b => `
         <tr>
@@ -579,8 +632,10 @@
             </td>
           </tr>`;
         }).join('') || '<tr><td colspan="7" class="admin-empty">No invites yet</td></tr>';
+        loadSucceeded('invites');
       } catch (err) {
-        tbody.innerHTML = errorRow(7, err.message, 'invites');
+        tbody.innerHTML = loadingRow(7);
+        loadFailed('invites', err);
       }
     }
 
@@ -648,7 +703,7 @@
       bugreports: loadBugReports, invites: loadInvites
     });
     function loadAll() {
-      Object.values(LOADERS).forEach(load => load());
+      Object.keys(LOADERS).forEach(runLoader);
     }
     loadAll();
   </script>

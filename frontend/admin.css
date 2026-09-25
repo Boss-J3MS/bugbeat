@@ -325,4 +325,3 @@
   border-radius: var(--radius-md);
 }
 .admin-status[hidden] { display: none; }
-.admin-retry { margin-left: 0.5rem; }
