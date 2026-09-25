@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css?v=4" />
   <link rel="stylesheet" href="auth.css" />
   <link rel="stylesheet" href="admin.css" />
 </head>
@@ -173,10 +173,7 @@
     }
 
     document.getElementById('user-greeting').textContent = `👤 ${user.username}`;
-    document.getElementById('logout-btn').addEventListener('click', () => {
-      localStorage.clear();
-      window.location.href = 'login.html';
-    });
+    // Logout (with its "Log out?" confirmation) is handled in logout.js.
     // Was <a href="index.html">, styled like every other header control
     // here but not actually one — a real button now, same as Admin was
     // on the main page.
@@ -403,6 +400,7 @@
     loadBugReports();
   </script>
   <script src="theme.js"></script>
+  <script src="logout.js"></script>
 
 </body>
-</html>
+</html>

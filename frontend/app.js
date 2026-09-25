@@ -40,13 +40,7 @@ if (adminLink) {
   });
 }
 
-if (logoutBtn) {
-  logoutBtn.addEventListener('click', () => {
-    localStorage.removeItem('cb_token');
-    localStorage.removeItem('cb_user');
-    window.location.href = 'login.html';
-  });
-}
+// Logout (with its "Log out?" confirmation) is handled in logout.js.
 
 // Helper: auth headers for protected routes
 function authHeaders() {
@@ -1491,4 +1485,4 @@ require(['vs/editor/editor.main'], function () {
 
   // Ready!
   updateAnalyzeBtn();
-});
+});
