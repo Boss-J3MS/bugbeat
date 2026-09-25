@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=5" />
   <link rel="stylesheet" href="history.css" />
 
   <!-- Monaco Editor -->
@@ -76,6 +76,7 @@
           <div id="notif-list" class="cb-notif__list">
             <div class="cb-notif__empty">No notifications yet.</div>
           </div>
+          <button id="notif-view-all" class="cb-notif__view-all" type="button">View all notifications</button>
         </div>
       </div>
 
@@ -416,6 +417,51 @@
     </form>
   </div>
 
+  <!-- ═══════════════════════════════════════════
+       NOTIFICATIONS — full view (notif-view.js)
+       Two views in one modal: the list of all notifications, and one
+       notification opened on its own (with a button to go to what it's
+       about, e.g. the analysis in History).
+  ═══════════════════════════════════════════ -->
+  <div id="nv-modal" class="cb-bugreport-modal" hidden role="dialog" aria-modal="true" aria-labelledby="nv-title">
+    <div class="cb-bugreport-modal__box cb-nv">
+      <div class="cb-bugreport-modal__header">
+        <button type="button" id="nv-back" class="cb-nv__back" hidden>← All notifications</button>
+        <span id="nv-title" class="cb-bugreport-modal__title">Notifications</span>
+        <button type="button" id="nv-close" class="cb-btn cb-btn--ghost" title="Close" aria-label="Close">✕</button>
+      </div>
+
+      <!-- List view -->
+      <div id="nv-list-view">
+        <div class="cb-nv__toolbar">
+          <div class="cb-nv__filters" role="group" aria-label="Show">
+            <button type="button" class="cb-nv__filter active" data-filter="all">All</button>
+            <button type="button" class="cb-nv__filter" data-filter="unread">Unread</button>
+          </div>
+          <button type="button" id="nv-mark-all" class="cb-notif__mark-all">Mark all read</button>
+        </div>
+        <div id="nv-list" class="cb-nv__list"></div>
+      </div>
+
+      <!-- One notification -->
+      <div id="nv-detail-view" hidden>
+        <div class="cb-nv__detail-head">
+          <span id="nv-detail-icon" class="cb-nv__icon" aria-hidden="true">🔔</span>
+          <div>
+            <div id="nv-detail-kind" class="cb-nv__kind"></div>
+            <div id="nv-detail-time" class="cb-nv__time"></div>
+          </div>
+        </div>
+        <p id="nv-detail-msg" class="cb-nv__msg"></p>
+        <div id="nv-detail-extra" class="cb-nv__extra" hidden></div>
+        <div class="cb-bugreport-modal__actions">
+          <button type="button" id="nv-action" class="cb-btn cb-btn--primary" hidden></button>
+          <button type="button" id="nv-done" class="cb-btn cb-btn--ghost">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
@@ -429,8 +475,9 @@
   </script>
 
   <script src="popover.js"></script>
-  <script src="app.js?v=2"></script>
-  <script src="history.js"></script>
+  <script src="app.js?v=3"></script>
+  <script src="history.js?v=2"></script>
+  <script src="notif-view.js"></script>
   <script src="theme.js"></script>
   <script src="menu.js?v=2"></script>
   <script src="account.js"></script>

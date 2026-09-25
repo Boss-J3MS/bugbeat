@@ -166,7 +166,17 @@ function renderNotifications() {
       time.textContent = timeAgo(n.created_at);
 
       item.append(msg, time);
-      item.addEventListener('click', () => markNotificationRead(n.id));
+      // Opens the notification in the full view (notif-view.js), which
+      // also marks it read.
+      const open = () => {
+        closeNotifDropdown();
+        if (window.openNotification) openNotification(n);
+        else markNotificationRead(n.id);
+      };
+      item.addEventListener('click', open);
+      item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); }
+      });
       notifList.appendChild(item);
     });
   }
@@ -230,6 +240,20 @@ if (notifMarkAll) {
     } catch (err) {
       console.warn('Could not mark all notifications as read:', err.message);
     }
+  });
+}
+
+function closeNotifDropdown() {
+  if (!notifDropdown || notifDropdown.hidden) return;
+  notifDropdown.hidden = true;
+  notifBtn?.setAttribute('aria-expanded', 'false');
+}
+
+const notifViewAll = document.getElementById('notif-view-all');
+if (notifViewAll) {
+  notifViewAll.addEventListener('click', () => {
+    closeNotifDropdown();
+    if (window.openAllNotifications) openAllNotifications();
   });
 }
 

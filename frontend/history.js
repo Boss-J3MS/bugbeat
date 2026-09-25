@@ -49,6 +49,22 @@ if (historyPanel) {
   });
 }
 
+// Opens History with one session already selected (used by the
+// notification viewer's "View analysis" button).
+async function openHistorySession(id) {
+  if (!historyPanel) return;
+  historyPanel.classList.add('cb-history--open');
+  await loadHistory();
+  // Page to wherever the session is in the list so its card is visible.
+  const index = filteredHistory.findIndex(s => s.id === id);
+  if (index >= 0) {
+    historyPage = Math.floor(index / PAGE_SIZE) + 1;
+    renderHistoryList();
+    renderPagination();
+  }
+  await selectHistorySession(id);
+}
+
 // ── Load history from backend ──────────────────
 async function loadHistory() {
   try {
@@ -347,4 +363,4 @@ function formatHistoryDate(dateStr) {
   if (days === 1) return `Yesterday, ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
     ', ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
+}

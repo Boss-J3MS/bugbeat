@@ -1573,15 +1573,32 @@ app.get('/audio', requireAuth, async (req, res) => {
 // ══════════════════════════════════════════════
 
 // ── GET /notifications ─────────────────────────
+// ?limit=N (1-100, default 20): the bell dropdown uses the default; the
+// "All notifications" view asks for more.
+// analysis_id: for "Analysis complete" notifications, the analysis it's
+// about, so the viewer can open it in History. The notification is
+// written right after its analysis in POST /history/save, so it's the
+// user's latest analysis saved at or just before the notification (the
+// 1-minute window keeps it from pointing at an older one if that
+// analysis is ever removed).
 app.get('/notifications', requireAuth, async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 20, 1), 100);
   try {
     const [notifications] = await db.query(
-      `SELECT id, message, type, is_read, created_at
-       FROM notifications
-       WHERE user_id = ?
-       ORDER BY created_at DESC
-       LIMIT 20`,
-      [req.user.userId]
+      `SELECT n.id, n.message, n.type, n.is_read, n.created_at,
+              CASE WHEN n.type = 'analysis' THEN (
+                SELECT a.id FROM analyses a
+                WHERE a.user_id = n.user_id
+                  AND a.created_at <= n.created_at
+                  AND a.created_at >= n.created_at - INTERVAL 1 MINUTE
+                ORDER BY a.created_at DESC, a.id DESC
+                LIMIT 1
+              ) END AS analysis_id
+       FROM notifications n
+       WHERE n.user_id = ?
+       ORDER BY n.created_at DESC, n.id DESC
+       LIMIT ?`,
+      [req.user.userId, limit]
     );
     return res.status(200).json({ success: true, notifications });
   } catch (err) {
