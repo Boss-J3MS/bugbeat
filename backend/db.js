@@ -108,8 +108,38 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit:    10,
   queueLimit:         0,
+  // Don't keep unused connections around forever. An idle connection to
+  // Aiven can be silently dropped by the network in between (firewalls /
+  // NAT forget quiet connections); the pool doesn't notice, hands the dead
+  // connection to the next request, and that request fails with
+  // ECONNRESET. mysql2 only closes idle connections when maxIdle is below
+  // connectionLimit, so this turns that on: anything unused for a minute
+  // is closed and a fresh one is opened when needed.
+  maxIdle:            5,
+  idleTimeout:        60 * 1000,
+  enableKeepAlive:    true,
+  keepAliveInitialDelay: 10 * 1000,
   ssl: buildSslConfig()
 });
+
+// Safety net for the same problem: if a query fails because its pooled
+// connection turned out to be dead, the pool has already thrown that
+// connection away, so run the query again on another one (up to 3 tries).
+// Only connection-level errors are retried; SQL errors are not.
+const RECONNECT_ERRORS = new Set(['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT']);
+for (const method of ['query', 'execute']) {
+  const original = pool[method].bind(pool);
+  pool[method] = async (...args) => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await original(...args);
+      } catch (err) {
+        if (!RECONNECT_ERRORS.has(err.code) || attempt >= 3) throw err;
+        console.warn(`[DB] ${err.code} on a pooled connection (try ${attempt}); retrying on a fresh connection`);
+      }
+    }
+  };
+}
 
 // Certificate pinning — mysql2/promise's pool re-emits 'connection' from
 // its underlying base pool for every new physical connection it opens,
@@ -154,4 +184,4 @@ pool.getConnection()
     console.error('[DB] MySQL connection failed:', err.message);
   });
 
-export default pool;
+export default pool;
