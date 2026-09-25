@@ -239,7 +239,10 @@ if (notifBtn && notifDropdown && notifWrap) {
     const isOpen = !notifDropdown.hidden;
     notifDropdown.hidden = isOpen;
     notifBtn.setAttribute('aria-expanded', String(!isOpen));
-    if (!isOpen) fetchNotifications(); // refresh right as it opens
+    if (!isOpen) {
+      if (window.keepInView) keepInView(notifDropdown); // don't let it hang off the screen edge
+      fetchNotifications(); // refresh right as it opens
+    }
   });
   document.addEventListener('click', (e) => {
     if (!notifDropdown.hidden && !notifWrap.contains(e.target)) {

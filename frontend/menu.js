@@ -18,6 +18,7 @@
   function open() {
     panel.hidden = false;
     btn.setAttribute('aria-expanded', 'true');
+    if (window.keepInView) keepInView(panel);   // see popover.js
   }
 
   function close(returnFocus) {
