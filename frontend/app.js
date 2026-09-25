@@ -159,7 +159,8 @@ function renderNotifications() {
 
       const msg = document.createElement('span');
       msg.className = 'cb-notif__item-msg';
-      msg.textContent = n.message;
+      // Broadcasts are stored as "title\nmessage"; show them on one line.
+      msg.textContent = String(n.message || '').replace(/\s*\n\s*/, ' — ');
 
       const time = document.createElement('span');
       time.className = 'cb-notif__item-time';

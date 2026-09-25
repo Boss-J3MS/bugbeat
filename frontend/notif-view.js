@@ -60,8 +60,27 @@
   }
 
   // What kind of notification this is, and where its button goes.
+  // Admin broadcasts (type broadcast_<kind>) are stored as "title\nmessage".
+  const BROADCAST = {
+    broadcast_info:        { icon: 'ℹ️', kind: 'Announcement' },
+    broadcast_maintenance: { icon: '🛠️', kind: 'Maintenance' },
+    broadcast_update:      { icon: '✨', kind: 'Update' }
+  };
+  function splitBroadcast(n) {
+    const text = String(n.message || '');
+    const i = text.indexOf('\n');
+    return i < 0 ? { title: '', body: text } : { title: text.slice(0, i).trim(), body: text.slice(i + 1).trim() };
+  }
+  function oneLine(text) {
+    return String(text || '').replace(/\s*\n\s*/, ' — ');
+  }
+
   function describe(n) {
     const msg = n.message || '';
+    if (BROADCAST[n.type]) {
+      const { title } = splitBroadcast(n);
+      return { ...BROADCAST[n.type], title, action: null };
+    }
     if (n.type === 'analysis') {
       return {
         icon: '📊',
@@ -168,7 +187,7 @@
         <button type="button" class="cb-nv__item${n.is_read ? '' : ' cb-nv__item--unread'}" data-id="${esc(n.id)}">
           <span class="cb-nv__item-icon" aria-hidden="true">${d.icon}</span>
           <span class="cb-nv__item-body">
-            <span class="cb-nv__item-msg">${esc(n.message)}</span>
+            <span class="cb-nv__item-msg">${esc(oneLine(n.message))}</span>
             <span class="cb-nv__item-time">${esc(ago(n.created_at))}</span>
           </span>
           ${n.is_read ? '' : '<span class="cb-nv__dot" aria-label="Unread"></span>'}
@@ -230,11 +249,13 @@
     detailView.hidden = false;
 
     iconEl.textContent = d.icon;
-    kindEl.textContent = d.kind;
+    // Broadcasts: the title is the heading and the type goes by the time.
+    kindEl.textContent = d.title || d.kind;
     const when = fullDate(n.created_at);
     const rel  = ago(n.created_at);
-    timeEl.textContent = rel && when ? `${when} · ${rel}` : (when || rel);
-    msgEl.textContent  = n.message || '';
+    const time = rel && when ? `${when} · ${rel}` : (when || rel);
+    timeEl.textContent = d.title ? `${d.kind} · ${time}` : time;
+    msgEl.textContent  = d.title ? splitBroadcast(n).body : (n.message || '');
 
     extraEl.hidden = true;
     extraEl.innerHTML = '';

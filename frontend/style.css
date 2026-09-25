@@ -1345,4 +1345,44 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 
 @media (max-width: 768px) {
   .cb-panel--output { border-right: none; }
-}
+}
+/* ── Broadcast banner (banner.js; preview on the admin page) ───── */
+.cb-announcements {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex-shrink: 0;
+}
+.cb-announcements:empty { display: none; }
+.cb-announce {
+  --announce: var(--accent);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.6rem 1.25rem;
+  background: color-mix(in srgb, var(--announce) 14%, var(--bg-panel));
+  border-bottom: 1px solid color-mix(in srgb, var(--announce) 45%, transparent);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+.cb-announce--maintenance { --announce: var(--warning); }
+.cb-announce--update      { --announce: var(--clean); }
+.cb-announce__icon { font-size: 1rem; line-height: 1.3; flex-shrink: 0; }
+.cb-announce__text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.cb-announce__title { font-weight: 700; margin-right: 0.4rem; }
+.cb-announce__msg { white-space: pre-line; }
+.cb-announce__close {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0 0.25rem;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.cb-announce__close:hover { color: var(--text); }
+@media (max-width: 480px) {
+  .cb-announce { padding: 0.55rem 0.75rem; }
+}

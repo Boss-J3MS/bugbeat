@@ -2100,6 +2100,216 @@ app.patch('/admin/bug-reports/:id/status', requireAdmin, async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════
+// BROADCASTS (admin announcements)
+// ══════════════════════════════════════════════
+// An admin sends one message to everyone, e.g. planned maintenance or a
+// new update. Each broadcast:
+//   • is saved in `announcements`,
+//   • is added to every user's 🔔 notifications (type broadcast_<kind>,
+//     message "<title>\n<body>"),
+//   • shows as a banner at the top of the main page until it expires or
+//     an admin ends it (GET /announcements/active),
+//   • can optionally be emailed to every user through Brevo. Emails are
+//     sent in the background after the admin gets a reply, and progress
+//     is saved on the row (email_status / emailed_count / email_error).
+//     Brevo's free plan allows 300 emails a day; if Brevo refuses because
+//     of that, sending stops and the reason is shown in the admin list.
+const BROADCAST_KINDS = {
+  info:        { label: 'Announcement', emoji: 'ℹ️' },
+  maintenance: { label: 'Maintenance',  emoji: '🛠️' },
+  update:      { label: 'Update',       emoji: '✨' }
+};
+const BROADCAST_TITLE_MAX   = 100;
+const BROADCAST_MESSAGE_MAX = 1000;
+const BROADCAST_EXPIRY_HOURS = new Set([1, 6, 24, 72, 168]); // or 0 = until ended
+
+function broadcastStatus(row) {
+  if (row.ended_at) return 'ended';
+  if (row.expires_at && new Date(row.expires_at) <= new Date()) return 'expired';
+  return 'active';
+}
+
+async function emailBroadcast(announcementId, { kind, title, message }) {
+  const info = BROADCAST_KINDS[kind];
+  const setEmail = (fields) => db.query('UPDATE announcements SET ? WHERE id = ?', [fields, announcementId])
+    .catch(err => console.error('[broadcast] could not save email progress:', err.message));
+
+  let users;
+  try {
+    [users] = await db.query("SELECT email, username FROM users WHERE email IS NOT NULL AND email <> ''");
+  } catch (err) {
+    await setEmail({ email_status: 'failed', email_error: 'Could not read the user list.' });
+    return;
+  }
+  await setEmail({ email_status: 'sending', email_total: users.length, emailed_count: 0 });
+
+  const subject = `[BugBeat] ${info.label}: ${title}`;
+  const bodyHtml = escapeHtml(message).replace(/\r?\n/g, '<br>');
+  let sent = 0;
+  let stopError = null;
+
+  // A few at a time, so a large list doesn't flood Brevo.
+  const queue = users.slice();
+  async function worker() {
+    while (queue.length && !stopError) {
+      const u = queue.shift();
+      const name = u.username || 'there';
+      try {
+        await sendBrevoEmail({
+          to: u.email,
+          subject,
+          text:
+            `Hi ${name},\n\n${info.label}: ${title}\n\n${message}\n\n` +
+            `Open BugBeat: ${APP_URL}\n\n— BugBeat`,
+          html:
+            `<p>Hi ${escapeHtml(name)},</p>` +
+            `<p style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#666;margin:16px 0 4px">${escapeHtml(info.label)}</p>` +
+            `<p style="font-size:18px;font-weight:700;margin:0 0 12px">${escapeHtml(title)}</p>` +
+            `<p style="line-height:1.5">${bodyHtml}</p>` +
+            `<p><a href="${escapeHtml(APP_URL)}">Open BugBeat</a></p>`
+        });
+        sent++;
+        if (sent % 10 === 0) await setEmail({ emailed_count: sent });
+      } catch (err) {
+        console.error(`[broadcast] email to user failed: ${err.message}`);
+        // 401/402/403/429: bad key, out of credits or daily limit, too many
+        // requests — the rest would fail the same way, so stop here.
+        if (/Brevo responded (401|402|403|429)/.test(err.message)) {
+          stopError = /402|429/.test(err.message)
+            ? 'Brevo stopped sending (daily email limit or credits reached).'
+            : 'Brevo refused the request (check BREVO_API_KEY on Render).';
+        }
+      }
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+
+  const status = stopError ? (sent ? 'partial' : 'failed')
+               : sent === users.length ? 'done'
+               : sent ? 'partial' : 'failed';
+  await setEmail({
+    email_status: status,
+    emailed_count: sent,
+    email_error: stopError || (sent < users.length ? `${users.length - sent} email(s) could not be sent.` : null)
+  });
+  console.log(`[broadcast] #${announcementId}: emailed ${sent}/${users.length}`);
+}
+
+// ── POST /admin/announcements ──────────────────
+app.post('/admin/announcements', requireAdmin, async (req, res) => {
+  const kind      = String(req.body?.kind || 'info');
+  const title     = String(req.body?.title || '').trim();
+  const message   = String(req.body?.message || '').trim();
+  const hours     = Number(req.body?.expires_hours ?? 24);
+  const sendEmail = req.body?.send_email === true;
+
+  if (!BROADCAST_KINDS[kind]) {
+    return res.status(400).json({ error: 'Please choose a type.' });
+  }
+  if (!title || title.length > BROADCAST_TITLE_MAX) {
+    return res.status(400).json({ error: `Please enter a title (up to ${BROADCAST_TITLE_MAX} characters).` });
+  }
+  if (!message || message.length > BROADCAST_MESSAGE_MAX) {
+    return res.status(400).json({ error: `Please enter a message (up to ${BROADCAST_MESSAGE_MAX} characters).` });
+  }
+  if (hours !== 0 && !BROADCAST_EXPIRY_HOURS.has(hours)) {
+    return res.status(400).json({ error: 'Please choose how long the banner stays up.' });
+  }
+  if (sendEmail && (!BREVO_API_KEY || !BREVO_SENDER_EMAIL)) {
+    return res.status(503).json({ error: 'Email is not set up on the server (BREVO_API_KEY / BREVO_SENDER_EMAIL). Send it without email, or set those first.' });
+  }
+
+  try {
+    const [result] = await db.query(
+      `INSERT INTO announcements (kind, title, message, created_by, expires_at, email_status)
+       VALUES (?, ?, ?, ?, ${hours ? 'DATE_ADD(NOW(), INTERVAL ? HOUR)' : 'NULL'}, ?)`,
+      hours
+        ? [kind, title, message, req.user.userId, hours, sendEmail ? 'queued' : 'none']
+        : [kind, title, message, req.user.userId, sendEmail ? 'queued' : 'none']
+    );
+    const id = result.insertId;
+
+    // One notification per user, in a single statement.
+    const [notified] = await db.query(
+      `INSERT INTO notifications (user_id, message, type)
+       SELECT id, ?, ? FROM users`,
+      [`${title}\n${message}`, `broadcast_${kind}`]
+    );
+
+    res.status(201).json({
+      id,
+      notified: notified.affectedRows,
+      emailing: sendEmail,
+      message: sendEmail
+        ? `Sent to ${notified.affectedRows} users. Emails are being sent now; check the list below for progress.`
+        : `Sent to ${notified.affectedRows} users.`
+    });
+
+    if (sendEmail) {
+      emailBroadcast(id, { kind, title, message })
+        .catch(err => console.error('[broadcast] email job failed:', err.message));
+    }
+  } catch (err) {
+    console.error('/admin/announcements error:', err.message);
+    res.status(500).json({ error: 'Could not send the broadcast. Please try again.' });
+  }
+});
+
+// ── GET /admin/announcements ───────────────────
+app.get('/admin/announcements', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT a.id, a.kind, a.title, a.message, a.created_at, a.expires_at, a.ended_at,
+              a.email_status, a.emailed_count, a.email_total, a.email_error,
+              u.username AS created_by
+         FROM announcements a
+         LEFT JOIN users u ON u.id = a.created_by
+        ORDER BY a.created_at DESC, a.id DESC
+        LIMIT 50`
+    );
+    res.json({ announcements: rows.map(r => ({ ...r, status: broadcastStatus(r) })) });
+  } catch (err) {
+    console.error('GET /admin/announcements error:', err.message);
+    res.status(500).json({ error: 'Could not load broadcasts.' });
+  }
+});
+
+// ── POST /admin/announcements/:id/end ──────────
+// Takes the banner down now. Notifications already delivered stay.
+app.post('/admin/announcements/:id/end', requireAdmin, async (req, res) => {
+  try {
+    const [result] = await db.query(
+      'UPDATE announcements SET ended_at = NOW() WHERE id = ? AND ended_at IS NULL',
+      [req.params.id]
+    );
+    if (!result.affectedRows) return res.status(404).json({ error: 'That broadcast was not found or has already ended.' });
+    res.json({ message: 'Banner taken down.' });
+  } catch (err) {
+    console.error('/admin/announcements/:id/end error:', err.message);
+    res.status(500).json({ error: 'Could not end the broadcast.' });
+  }
+});
+
+// ── GET /announcements/active ──────────────────
+// Public on purpose (no login needed): only the banner text, nothing
+// about who sent it.
+app.get('/announcements/active', async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, kind, title, message, created_at, expires_at
+         FROM announcements
+        WHERE ended_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+        ORDER BY created_at DESC, id DESC
+        LIMIT 3`
+    );
+    res.json({ announcements: rows });
+  } catch (err) {
+    console.error('/announcements/active error:', err.message);
+    res.status(500).json({ error: 'Could not load announcements.' });
+  }
+});
+
 // ── Helper ─────────────────────────────────────
 function round(val, decimals) {
   return Math.round(val * Math.pow(10, decimals)) / Math.pow(10, decimals);

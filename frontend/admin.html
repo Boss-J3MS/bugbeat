@@ -14,9 +14,9 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=4" />
+  <link rel="stylesheet" href="style.css?v=6" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=4" />
+  <link rel="stylesheet" href="admin.css?v=5" />
 </head>
 <body>
 
@@ -31,6 +31,7 @@
       <button class="admin-nav__btn" data-tab="analyses">📋 Analyses</button>
       <button class="admin-nav__btn" data-tab="bugreports">🐛 Bug Reports</button>
       <button class="admin-nav__btn" data-tab="invites">🔑 Invites</button>
+      <button class="admin-nav__btn" data-tab="broadcast">📢 Broadcast</button>
     </nav>
     <div class="cb-user-info">
       <span id="user-greeting" class="cb-user-greeting"></span>
@@ -191,6 +192,88 @@
             </tr>
           </thead>
           <tbody id="invites-tbody"><tr><td colspan="7" class="admin-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── BROADCAST TAB ─────────────────────── -->
+    <div id="tab-broadcast" class="admin-tab">
+      <h2 class="admin-section-title">Broadcast</h2>
+
+      <div class="admin-card admin-invite-create">
+        <h3 class="admin-card__title">Send a message to all users</h3>
+        <p class="admin-invite-help">
+          Goes to every user's 🔔 notifications and shows as a banner at the top of BugBeat
+          until it expires or you end it. You can also email it.
+        </p>
+        <form id="bc-form" class="admin-bc-form" novalidate>
+          <div class="admin-bc-row">
+            <label class="admin-bc-field">
+              <span>Type</span>
+              <select id="bc-kind" class="cb-select">
+                <option value="info">ℹ️ Announcement</option>
+                <option value="maintenance">🛠️ Maintenance</option>
+                <option value="update">✨ Update</option>
+              </select>
+            </label>
+            <label class="admin-bc-field">
+              <span>Banner stays up for</span>
+              <select id="bc-expiry" class="cb-select">
+                <option value="1">1 hour</option>
+                <option value="6">6 hours</option>
+                <option value="24" selected>1 day</option>
+                <option value="72">3 days</option>
+                <option value="168">7 days</option>
+                <option value="0">Until I end it</option>
+              </select>
+            </label>
+          </div>
+          <label class="admin-bc-field">
+            <span>Title</span>
+            <input type="text" id="bc-title" class="admin-invite-input" maxlength="100"
+                   placeholder="e.g. Scheduled maintenance tonight" />
+          </label>
+          <label class="admin-bc-field">
+            <span>Message <em id="bc-count" class="admin-bc-count">0 / 1000</em></span>
+            <textarea id="bc-message" class="admin-invite-input admin-bc-textarea" maxlength="1000"
+                      placeholder="e.g. BugBeat will be unavailable from 10:00 PM to 11:00 PM while we update the server."></textarea>
+          </label>
+          <label class="admin-bc-check">
+            <input type="checkbox" id="bc-email" />
+            <span>Also email all users <em class="admin-empty-inline">(Brevo's free plan sends up to 300 emails a day)</em></span>
+          </label>
+
+          <div class="admin-bc-preview-label">Banner preview</div>
+          <div id="bc-preview" class="cb-announce cb-announce--info">
+            <span class="cb-announce__icon" aria-hidden="true">ℹ️</span>
+            <div class="cb-announce__text">
+              <strong class="cb-announce__title">Your title</strong>
+              <span class="cb-announce__msg">Your message</span>
+            </div>
+          </div>
+
+          <div class="admin-bc-actions">
+            <button type="submit" id="bc-send-btn" class="cb-btn cb-btn--primary">Send to all users</button>
+          </div>
+        </form>
+        <div id="bc-error" class="admin-invite-msg admin-invite-msg--error" hidden></div>
+        <div id="bc-success" class="admin-invite-msg admin-invite-msg--ok" hidden></div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Banner</th>
+              <th>Email</th>
+              <th>Sent by</th>
+              <th>Sent</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bc-tbody"><tr><td colspan="7" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -697,10 +780,159 @@
       return d ? new Date(d).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : '—';
     }
 
+    // ── Broadcast ──────────────────────────────
+    const BC_KINDS = {
+      info:        { label: 'Announcement', icon: 'ℹ️' },
+      maintenance: { label: 'Maintenance',  icon: '🛠️' },
+      update:      { label: 'Update',       icon: '✨' }
+    };
+    const BC_BANNER = {
+      active:  { label: 'Showing', cls: 'admin-invite-status--active' },
+      expired: { label: 'Expired', cls: 'admin-invite-status--used' },
+      ended:   { label: 'Ended',   cls: 'admin-invite-status--used' }
+    };
+    let bcPoll = null;   // refreshes the list while emails are going out
+
+    function bcEmailText(a) {
+      switch (a.email_status) {
+        case 'none':    return '<span class="admin-empty-inline">Not emailed</span>';
+        case 'queued':  return 'Starting…';
+        case 'sending': return `Sending… ${esc(a.emailed_count)} / ${esc(a.email_total)}`;
+        case 'done':    return `Sent to ${esc(a.emailed_count)}`;
+        case 'partial':
+        case 'failed':
+          return `<span class="admin-bc-warn" title="${esc(a.email_error || '')}">` +
+                 `${esc(a.emailed_count)} / ${esc(a.email_total)} sent` +
+                 `${a.email_error ? ' ⚠' : ''}</span>` +
+                 (a.email_error ? `<div class="admin-bc-note">${esc(a.email_error)}</div>` : '');
+        default:        return '—';
+      }
+    }
+
+    async function loadBroadcasts() {
+      const tbody = document.getElementById('bc-tbody');
+      try {
+        const data = await adminFetch('/admin/announcements');
+        const rows = data.announcements || [];
+        tbody.innerHTML = rows.map(a => {
+          const k  = BC_KINDS[a.kind] || BC_KINDS.info;
+          const st = BC_BANNER[a.status] || BC_BANNER.ended;
+          const until = a.status === 'active'
+            ? (a.expires_at ? `until ${formatDateTime(a.expires_at)}` : 'until ended')
+            : '';
+          return `
+          <tr>
+            <td>${k.icon} ${esc(k.label)}</td>
+            <td class="admin-bc-titlecell">
+              <strong>${esc(a.title)}</strong>
+              <div class="admin-bc-note">${esc(a.message)}</div>
+            </td>
+            <td>
+              <span class="admin-invite-status ${st.cls}">${st.label}</span>
+              ${until ? `<div class="admin-bc-note">${until}</div>` : ''}
+            </td>
+            <td>${bcEmailText(a)}</td>
+            <td>${esc(a.created_by || '—')}</td>
+            <td>${formatDateTime(a.created_at)}</td>
+            <td class="admin-actions">
+              ${a.status === 'active' ? `
+                <button class="cb-btn cb-btn--ghost admin-btn-sm admin-btn-danger"
+                  data-action="end-broadcast" data-id="${esc(a.id)}">End banner</button>` : '<span class="admin-empty-inline">—</span>'}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="7" class="admin-empty">No broadcasts yet</td></tr>';
+        loadSucceeded('broadcasts');
+
+        // Keep refreshing while emails are still being sent.
+        const sending = rows.some(a => a.email_status === 'queued' || a.email_status === 'sending');
+        clearTimeout(bcPoll);
+        if (sending) bcPoll = setTimeout(() => runLoader('broadcasts'), 4000);
+      } catch (err) {
+        tbody.innerHTML = loadingRow(7);
+        loadFailed('broadcasts', err);
+      }
+    }
+
+    function updateBcPreview() {
+      const kind  = document.getElementById('bc-kind').value;
+      const title = document.getElementById('bc-title').value.trim();
+      const msg   = document.getElementById('bc-message').value.trim();
+      const prev  = document.getElementById('bc-preview');
+      prev.className = `cb-announce cb-announce--${kind}`;
+      prev.querySelector('.cb-announce__icon').textContent  = (BC_KINDS[kind] || BC_KINDS.info).icon;
+      prev.querySelector('.cb-announce__title').textContent = title || 'Your title';
+      prev.querySelector('.cb-announce__msg').textContent   = msg || 'Your message';
+      document.getElementById('bc-count').textContent = `${document.getElementById('bc-message').value.length} / 1000`;
+    }
+    ['bc-kind', 'bc-title', 'bc-message'].forEach(id =>
+      document.getElementById(id).addEventListener('input', updateBcPreview));
+    document.getElementById('bc-kind').addEventListener('change', updateBcPreview);
+
+    document.getElementById('bc-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn   = document.getElementById('bc-send-btn');
+      const errEl = document.getElementById('bc-error');
+      const okEl  = document.getElementById('bc-success');
+      const kind  = document.getElementById('bc-kind').value;
+      const title = document.getElementById('bc-title').value.trim();
+      const message = document.getElementById('bc-message').value.trim();
+      const sendEmail = document.getElementById('bc-email').checked;
+      const expires_hours = Number(document.getElementById('bc-expiry').value);
+      errEl.hidden = true;
+      okEl.hidden  = true;
+
+      if (!title || !message) {
+        errEl.textContent = 'Please enter a title and a message.';
+        errEl.hidden = false;
+        return;
+      }
+      const ok = await confirm(
+        sendEmail
+          ? `Send "${title}" to ALL users, and email it to every user? This can't be undone.`
+          : `Send "${title}" to ALL users? This can't be undone.`
+      );
+      if (!ok) return;
+
+      btn.disabled = true;
+      btn.textContent = 'Sending…';
+      try {
+        const data = await adminFetch('/admin/announcements', {
+          method: 'POST',
+          body: JSON.stringify({ kind, title, message, expires_hours, send_email: sendEmail })
+        });
+        okEl.textContent = data.message || 'Sent.';
+        okEl.hidden = false;
+        document.getElementById('bc-title').value = '';
+        document.getElementById('bc-message').value = '';
+        document.getElementById('bc-email').checked = false;
+        updateBcPreview();
+        loadBroadcasts();
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.hidden = false;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send to all users';
+      }
+    });
+
+    document.getElementById('bc-tbody').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-action="end-broadcast"]');
+      if (!btn) return;
+      const ok = await confirm('Take this banner down now? Users keep the notification.');
+      if (!ok) return;
+      try {
+        await adminFetch(`/admin/announcements/${btn.dataset.id}/end`, { method: 'POST' });
+      } catch (err) {
+        setStatus(`Could not end the broadcast: ${err.message}`);
+      }
+      loadBroadcasts();
+    });
+
     // ── Init ───────────────────────────────────
     Object.assign(LOADERS, {
       stats: loadStats, users: loadUsers, analyses: loadAnalyses,
-      bugreports: loadBugReports, invites: loadInvites
+      bugreports: loadBugReports, invites: loadInvites, broadcasts: loadBroadcasts
     });
     function loadAll() {
       Object.keys(LOADERS).forEach(runLoader);
