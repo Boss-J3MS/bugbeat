@@ -8,6 +8,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import tls from 'tls';
 import { fileURLToPath } from 'url';
 dotenv.config();
 
@@ -150,6 +151,29 @@ if (process.env.DB_SSL === 'true' && process.env.DB_SSL_VERIFY === 'true') {
   const pinned = loadPinnedFingerprint();
   if (pinned) {
     console.log(`[DB] Certificate pinning enabled against ${pinned.caPath} (fingerprint256=${pinned.fingerprint256})`);
+
+    // mysql2 reuses TLS sessions between connections to save time. A
+    // reused ("resumed") session skips sending the certificate chain, so
+    // the pinning check below saw no CA on every connection after the
+    // first and refused it — requests on those connections then failed
+    // with "Can't add new command when connection is in closed state"
+    // (shown to users as "Authentication check failed" / sign-in failed).
+    // That became constant once idle connections started being closed and
+    // reopened. Dropping the saved session for the database connection
+    // makes every connection do a full handshake, so the server always
+    // sends its chain and every connection is actually checked. It only
+    // touches TLS connections to DB_HOST (other HTTPS calls are left
+    // alone), and costs a few milliseconds per new connection.
+    const dbHost = process.env.DB_HOST;
+    const realTlsConnect = tls.connect;
+    tls.connect = function (...args) {
+      const opts = args[0];
+      if (opts && typeof opts === 'object' && opts.socket && opts.session &&
+          (opts.servername === dbHost || opts.servername === undefined)) {
+        args[0] = { ...opts, session: undefined };
+      }
+      return realTlsConnect.apply(this, args);
+    };
     pool.on('connection', (connection) => {
       const chain = getPeerCertChain(connection.stream);
       const match = chain.find(c => c.fingerprint256 === pinned.fingerprint256);
