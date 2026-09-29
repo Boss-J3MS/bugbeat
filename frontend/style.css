@@ -136,9 +136,12 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 /* Bigger on the login/signup cards, which have room above the title. */
 .cb-logo-img--auth { height: 56px; }
 
+/* The app name next to the logo. */
 .cb-header__tagline {
-  font-size: 0.72rem;
-  color: var(--text-muted);
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--text);
   flex: 1;
 }
 
@@ -1061,7 +1064,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
     padding: 0.6rem 0.75rem;
     gap: 0.5rem;
   }
-  .cb-header__tagline { display: none; }
+  .cb-header__tagline { font-size: 1rem; }
   .cb-header__controls {
     width: 100%;
     flex-wrap: wrap;
