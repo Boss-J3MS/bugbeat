@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=7" />
+  <link rel="stylesheet" href="style.css?v=8" />
   <link rel="stylesheet" href="history.css?v=2" />
 
   <!-- Monaco Editor -->
@@ -95,6 +95,15 @@
               </label>
               <input type="file" id="audio-upload" accept="audio/*" hidden />
               <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
+            </div>
+            <!-- Saved tracks (tracks.js); hidden until the server says saving is on. -->
+            <div id="tracks" class="cb-tracks" hidden>
+              <div class="cb-tracks__head">
+                <span>My tracks</span>
+                <span id="tracks-count" class="cb-tracks__count"></span>
+              </div>
+              <div id="tracks-list" class="cb-tracks__list"></div>
+              <div id="tracks-msg" class="cb-tracks__msg" hidden></div>
             </div>
           </div>
 
@@ -475,11 +484,12 @@
     });
   </script>
 
-  <script src="popover.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="popover.js?v=2"></script>
+  <script src="app.js?v=6"></script>
   <script src="history.js?v=3"></script>
   <script src="notif-view.js?v=3"></script>
   <script src="banner.js"></script>
+  <script src="tracks.js"></script>
   <script src="theme.js"></script>
   <script src="menu.js?v=2"></script>
   <script src="account.js"></script>

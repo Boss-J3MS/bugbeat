@@ -19,8 +19,10 @@
 //  POST /history/save → Save analysis to DB
 //  GET  /history      → Get user's analysis history
 //  GET  /history/:id  → Recall full session
-//  POST /audio/upload → Save audio upload metadata
-//  GET  /audio        → Get user audio uploads
+//  GET  /audio             → List the user's saved tracks (+ limits)
+//  POST /audio             → Save a track (raw file body) to R2
+//  GET  /audio/:id/file    → Download one of the user's tracks
+//  DELETE /audio/:id       → Delete one of the user's tracks
 //  GET  /notifications       → Get notifications
 //  PATCH /notifications/:id/read → Mark as read
 //  PATCH /notifications/read-all → Mark all as read
@@ -35,6 +37,7 @@ import { OAuth2Client } from 'google-auth-library';
 import crypto       from 'crypto';
 import dns          from 'dns';
 import db       from './db.js';
+import { storageEnabled, putObject, getObject, deleteObjects, detectAudio } from './storage.js';
 import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
 
 dotenv.config();
@@ -681,8 +684,16 @@ app.post('/auth/signup', emailCodeLimiter, async (req, res) => {
       message: `We sent a 6-digit code to ${email}. Enter it below to finish creating your account.`
     });
   } catch (err) {
-    console.error('/auth/signup error:', err.message);
-    res.status(500).json({ error: 'Could not send the verification email. Please check the address and try again.' });
+    const ref = errorRef(err);
+    console.error('/auth/signup error:', ref, err.message);
+    // Email problems (Brevo) and server/database problems get different
+    // messages; the old one blamed the address for both.
+    res.status(500).json({
+      error: ref.startsWith('EMAIL_')
+        ? "We couldn't send the verification email right now. Please try again in a few minutes."
+        : 'Sign-up failed on the server. Please try again.',
+      ref
+    });
   }
 });
 
@@ -767,8 +778,8 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
       user    : { id: newUser.insertId, username: pending.username, email: pending.email, role: 'user' }
     });
   } catch (err) {
-    console.error('/auth/signup/verify error:', err.message);
-    res.status(500).json({ error: 'Could not verify the code. Please try again.' });
+    console.error('/auth/signup/verify error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Could not verify the code. Please try again.', ref: errorRef(err) });
   }
 });
 
@@ -809,8 +820,8 @@ app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
 
     res.json({ message: `We sent a new code to ${email}.` });
   } catch (err) {
-    console.error('/auth/signup/resend error:', err.message);
-    res.status(500).json({ error: 'Could not send a new code. Please try again.' });
+    console.error('/auth/signup/resend error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Could not send a new code. Please try again.', ref: errorRef(err) });
   }
 });
 
@@ -878,8 +889,8 @@ app.post('/auth/login', authLimiter, async (req, res) => {
     });
 
   } catch (err) {
-    console.error('/auth/login error:', err.message);
-    res.status(500).json({ error: 'Login failed. Please try again.' });
+    console.error('/auth/login error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Login failed. Please try again.', ref: errorRef(err) });
   }
 });
 
@@ -993,8 +1004,8 @@ app.post('/auth/google', authLimiter, async (req, res) => {
     });
 
   } catch (err) {
-    console.error('/auth/google error:', err.message);
-    res.status(500).json({ error: 'Google sign-in failed. Please try again.' });
+    console.error('/auth/google error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Google sign-in failed. Please try again.', ref: errorRef(err) });
   }
 });
 
@@ -1106,6 +1117,17 @@ if (!BREVO_API_KEY || !BREVO_SENDER_EMAIL) {
 // doesn't hand out working reset links.
 function hashResetToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+// A short, safe reason code sent back with a 500 (e.g. ER_NO_SUCH_TABLE,
+// ECONNRESET, EMAIL_401), so a failure can be diagnosed from the browser
+// even without the server logs. Only the code — never the error text,
+// SQL or any values.
+function errorRef(err) {
+  const brevo = /^Brevo responded (\d{3})/.exec(err?.message || '');
+  if (brevo) return `EMAIL_${brevo[1]}`;
+  const code = String(err?.code || err?.name || 'UNKNOWN').replace(/[^A-Za-z0-9_]/g, '').slice(0, 40);
+  return code || 'UNKNOWN';
 }
 
 function escapeHtml(text) {
@@ -1530,7 +1552,175 @@ app.get('/music-preferences', requireAuth, async (req, res) => {
 });
 
 // ══════════════════════════════════════════════
-// AUDIO ROUTES
+// AUDIO ROUTES — saved tracks ("My tracks")
+// ══════════════════════════════════════════════
+// Uploaded backing tracks are stored in Cloudflare R2 (storage.js); the
+// audio_uploads table keeps one row per track (owner, display name, type,
+// size, R2 key). The file goes through this server both ways, so the
+// bucket stays private and every read/delete is checked against the
+// logged-in user. Limits: AUDIO_MAX_BYTES per track, AUDIO_MAX_FILES per
+// user (keeps the whole app well inside R2's 10 GB free storage).
+const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+const AUDIO_MAX_FILES = 5;
+
+const audioUploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Too many uploads. Please wait a few minutes and try again.' }
+});
+
+// "C:\\music\\my song.mp3" -> "my song.mp3"; no control characters, max 120.
+function cleanTrackName(raw) {
+  let name = '';
+  try { name = decodeURIComponent(String(raw || '')); } catch { name = String(raw || ''); }
+  name = name.split(/[\\/]/).pop().replace(/[\u0000-\u001f\u007f]/g, '').trim();
+  return (name || 'Untitled track').slice(0, 120);
+}
+
+function trackJson(row) {
+  return { id: row.id, name: row.file_name, type: row.file_type, size: row.file_size, uploaded_at: row.uploaded_at };
+}
+
+// ── GET /audio ─────────────────────────────────
+app.get('/audio', requireAuth, async (req, res) => {
+  const limits = { enabled: storageEnabled, max_files: AUDIO_MAX_FILES, max_bytes: AUDIO_MAX_BYTES };
+  if (!storageEnabled) return res.json({ ...limits, tracks: [] });
+  try {
+    const [rows] = await db.query(
+      `SELECT id, file_name, file_type, file_size, uploaded_at
+         FROM audio_uploads
+        WHERE user_id = ? AND storage_key IS NOT NULL
+        ORDER BY uploaded_at DESC, id DESC`,
+      [req.user.userId]
+    );
+    res.json({ ...limits, tracks: rows.map(trackJson) });
+  } catch (err) {
+    console.error('GET /audio error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Could not load your saved tracks.', ref: errorRef(err) });
+  }
+});
+
+// ── POST /audio ────────────────────────────────
+// Body: the raw audio file. Header X-File-Name: the original file name
+// (URI-encoded). The real format is detected from the file's bytes.
+app.post('/audio',
+  requireAuth,
+  audioUploadLimiter,
+  express.raw({ type: () => true, limit: AUDIO_MAX_BYTES }),
+  async (req, res) => {
+    if (!storageEnabled) {
+      return res.status(503).json({ error: 'Saving tracks is not set up on this server yet.' });
+    }
+    const body = req.body;
+    if (!Buffer.isBuffer(body) || body.length === 0) {
+      return res.status(400).json({ error: 'No audio file was received.' });
+    }
+    const format = detectAudio(body);
+    if (!format) {
+      return res.status(400).json({ error: 'That file is not a supported audio format (MP3, WAV, OGG, FLAC, M4A, AAC or WebM).' });
+    }
+    const name = cleanTrackName(req.get('X-File-Name'));
+
+    try {
+      const [[{ count }]] = await db.query(
+        'SELECT COUNT(*) AS count FROM audio_uploads WHERE user_id = ? AND storage_key IS NOT NULL',
+        [req.user.userId]
+      );
+      if (count >= AUDIO_MAX_FILES) {
+        return res.status(409).json({ error: `You already have ${AUDIO_MAX_FILES} saved tracks. Delete one to save a new one.`, limit: true });
+      }
+
+      const key = `audio/${req.user.userId}/${crypto.randomUUID()}${format.ext}`;
+      await putObject(key, body, format.mime);
+      try {
+        const [result] = await db.query(
+          `INSERT INTO audio_uploads (user_id, file_name, file_type, file_size, storage_key)
+           VALUES (?, ?, ?, ?, ?)`,
+          [req.user.userId, name, format.mime, body.length, key]
+        );
+        res.status(201).json({
+          message: 'Saved to My tracks.',
+          track: { id: result.insertId, name, type: format.mime, size: body.length, uploaded_at: new Date() }
+        });
+      } catch (err) {
+        // Don't leave an orphaned file in R2 if the row couldn't be saved.
+        deleteObjects([key]).catch(() => {});
+        throw err;
+      }
+    } catch (err) {
+      console.error('POST /audio error:', errorRef(err), err.message);
+      res.status(500).json({ error: 'Could not save the track. Please try again.', ref: errorRef(err) });
+    }
+  }
+);
+
+// Too-large uploads are rejected by express.raw before the handler runs.
+app.use('/audio', (err, req, res, next) => {
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: `That file is too big to save (max ${AUDIO_MAX_BYTES / 1024 / 1024} MB).` });
+  }
+  next(err);
+});
+
+async function findOwnTrack(req) {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id) || id <= 0) return null;
+  const [rows] = await db.query(
+    `SELECT id, file_name, file_type, file_size, storage_key
+       FROM audio_uploads
+      WHERE id = ? AND user_id = ? AND storage_key IS NOT NULL
+      LIMIT 1`,
+    [id, req.user.userId]
+  );
+  return rows[0] || null;
+}
+
+// ── GET /audio/:id/file ────────────────────────
+// Streams the saved file back (only to its owner).
+app.get('/audio/:id/file', requireAuth, async (req, res) => {
+  if (!storageEnabled) return res.status(503).json({ error: 'Saved tracks are not available right now.' });
+  try {
+    const track = await findOwnTrack(req);
+    if (!track) return res.status(404).json({ error: 'That track was not found.' });
+    const obj = await getObject(track.storage_key);
+    res.set({
+      'Content-Type': track.file_type || obj.contentType || 'application/octet-stream',
+      'Cache-Control': 'private, max-age=3600',
+      ...(obj.contentLength ? { 'Content-Length': String(obj.contentLength) } : {})
+    });
+    obj.body.on('error', (err) => {
+      console.error('GET /audio/:id/file stream error:', err.message);
+      res.destroy(err);
+    });
+    obj.body.pipe(res);
+  } catch (err) {
+    const missing = err?.name === 'NoSuchKey' || err?.$metadata?.httpStatusCode === 404;
+    console.error('GET /audio/:id/file error:', errorRef(err), err.message);
+    if (res.headersSent) return res.destroy(err);
+    res.status(missing ? 404 : 500).json({
+      error: missing ? 'That track file is missing.' : 'Could not load the track. Please try again.',
+      ref: errorRef(err)
+    });
+  }
+});
+
+// ── DELETE /audio/:id ──────────────────────────
+app.delete('/audio/:id', requireAuth, async (req, res) => {
+  if (!storageEnabled) return res.status(503).json({ error: 'Saved tracks are not available right now.' });
+  try {
+    const track = await findOwnTrack(req);
+    if (!track) return res.status(404).json({ error: 'That track was not found.' });
+    await deleteObjects([track.storage_key]);
+    await db.query('DELETE FROM audio_uploads WHERE id = ?', [track.id]);
+    res.json({ message: 'Track deleted.' });
+  } catch (err) {
+    console.error('DELETE /audio/:id error:', errorRef(err), err.message);
+    res.status(500).json({ error: 'Could not delete the track. Please try again.', ref: errorRef(err) });
+  }
+});
+
 // ══════════════════════════════════════════════
 
 // ── POST /audio/upload ─────────────────────────
@@ -1882,7 +2072,17 @@ app.delete('/admin/users/:id', requireAdmin, async (req, res) => {
     // Revoke any active sessions first so a deleted account's still-valid
     // JWT can't keep being used against endpoints that don't re-check users.
     await db.query('DELETE FROM sessions WHERE user_id = ?', [id]);
+    // Their saved tracks: remember the R2 keys, remove the rows, then the
+    // files (best effort — a failure there doesn't block the delete).
+    const [tracks] = await db.query(
+      'SELECT storage_key FROM audio_uploads WHERE user_id = ? AND storage_key IS NOT NULL', [id]
+    );
+    await db.query('DELETE FROM audio_uploads WHERE user_id = ?', [id]);
     await db.query('DELETE FROM users WHERE id = ?', [id]);
+    if (storageEnabled && tracks.length) {
+      deleteObjects(tracks.map(t => t.storage_key))
+        .catch(err => console.error('[storage] could not delete a removed user\'s tracks:', err.message));
+    }
     res.json({ message: 'User deleted successfully.' });
   } catch (err) {
     res.status(500).json({ error: 'Could not delete user.' });

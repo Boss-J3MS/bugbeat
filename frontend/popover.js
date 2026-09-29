@@ -38,4 +38,13 @@
   };
 
   window.addEventListener('resize', () => tracked.forEach(place));
+
+  // The header can also re-wrap without the window changing size (e.g. a
+  // status message appears next to the search bar while the ☰ menu is
+  // open), which moves the buttons the panels hang from. Watch the header
+  // and re-place any open panel when its size changes.
+  const header = document.querySelector('.cb-header');
+  if (header && 'ResizeObserver' in window) {
+    new ResizeObserver(() => tracked.forEach(place)).observe(header);
+  }
 })();

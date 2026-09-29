@@ -478,22 +478,32 @@ const SEVERITY_FX = {
 // ═══════════════════════════════════════════════
 // AUDIO FILE UPLOAD
 // ═══════════════════════════════════════════════
+// Decodes a track and makes it the backing track. Used for a freshly
+// picked file and for a saved track from "My tracks" (tracks.js).
+// Returns true if the audio could be decoded.
+async function useAudioTrack(arrayBuffer, name) {
+  audioLabel.textContent = `🎵 ${name}`;
+  audioRemoveBtn.hidden  = false;
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    setMusicStatus(`✅ "${name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
+    return true;
+  } catch(err) {
+    setMusicStatus('⚠ Could not decode audio file. Try an MP3 or WAV.', 'error');
+    audioBuffer = null;
+    return false;
+  }
+}
+
 if (audioUpload) {
   audioUpload.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     uploadedFile = file;
-    audioLabel.textContent = `🎵 ${file.name}`;
-    audioRemoveBtn.hidden  = false;
-    try {
-      audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-      const arrayBuffer = await file.arrayBuffer();
-      audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-      setMusicStatus(`✅ "${file.name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
-    } catch(err) {
-      setMusicStatus('⚠ Could not decode audio file. Try an MP3 or WAV.', 'error');
-      audioBuffer = null;
-    }
+    const ok = await useAudioTrack(await file.arrayBuffer(), file.name);
+    // Also keep it in the user's saved tracks (tracks.js).
+    if (ok && window.saveTrackToAccount) saveTrackToAccount(file);
   });
 }
 
@@ -505,6 +515,7 @@ if (audioRemoveBtn) {
     audioRemoveBtn.hidden  = true;
     setMusicStatus('Audio removed — using synthesized music', '');
     stopAudioFile();
+    if (window.markActiveTrack) markActiveTrack(null);
   });
 }
 
