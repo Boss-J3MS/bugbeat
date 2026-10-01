@@ -12,6 +12,25 @@ const BACKEND_URL =
     ? 'http://localhost:3000'
     : 'https://bugbeat.onrender.com';
 
+// ── Audio output buffering ─────────────────────
+// Browsers default to the smallest audio buffer ('interactive' latency),
+// meant for games and instruments that must respond instantly. On a busy
+// laptop, or with Bluetooth/USB audio, that small buffer can run dry: the
+// audio clock falls behind and the sound drops out for a while even though
+// the music is still being generated. BugBeat only plays background music,
+// so it asks for the larger 'playback' buffer instead — sound starts a
+// fraction of a second later, but plays through without gaps. This has to
+// run before any instrument is created (they're built when Play is pressed).
+// Note: after this, use Tone.getTransport() / Tone.getDestination(), not
+// Tone.Transport / Tone.Destination — those still point at the old context.
+if (window.Tone) {
+  try {
+    Tone.setContext(new Tone.Context({ latencyHint: 'playback', lookAhead: 0.15 }));
+  } catch (e) {
+    console.warn('Could not switch audio to playback buffering:', e.message);
+  }
+}
+
 // ── Auth guard ─────────────────────────────────
 // Redirect to login if not logged in
 const cbToken = localStorage.getItem('cb_token');
@@ -485,7 +504,8 @@ async function useAudioTrack(arrayBuffer, name) {
   audioLabel.textContent = `🎵 ${name}`;
   audioRemoveBtn.hidden  = false;
   try {
-    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    // Same larger 'playback' buffer for uploaded tracks (see above).
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
     audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
     setMusicStatus(`✅ "${name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
     return true;
@@ -740,7 +760,7 @@ function startLoop() {
   const bass    = style.bassLine   || ['C2'];
   const lead    = style.leadNotes  || ['C5'];
 
-  Tone.Transport.bpm.value = parseInt(bpmRange.value);
+  Tone.getTransport().bpm.value = parseInt(bpmRange.value);
 
   const bassSeq = new Tone.Sequence((time, i) => {
     try { bassSynth.triggerAttackRelease(bass[i % bass.length], '8n', time); } catch(e) {}
@@ -769,7 +789,7 @@ function startLoop() {
 
   bassSeq.start(0); padSeq.start(0); melodySeq.start(0);
   leadSeq.start('2m'); drumSeq.start(0);
-  Tone.Transport.start();
+  Tone.getTransport().start();
   toneLoop = { bassSeq, padSeq, melodySeq, leadSeq, drumSeq };
 }
 
@@ -777,7 +797,7 @@ function stopLoop() {
   if (toneLoop) {
     Object.values(toneLoop).forEach(seq => { try { seq?.stop(); seq?.dispose(); } catch(e) {} });
   }
-  try { Tone.Transport.stop(); Tone.Transport.cancel(); } catch(e) {}
+  try { Tone.getTransport().stop(); Tone.getTransport().cancel(); } catch(e) {}
   toneLoop = null; chordIndex = 0;
 }
 
@@ -893,7 +913,7 @@ stopBtn.addEventListener('click', () => { stopPlayback(); playIndex = 0; });
 bpmRange.addEventListener('input', () => {
   bpmVal.textContent = bpmRange.value;
   updateBpmFill();
-  if (isPlaying) Tone.Transport.bpm.value = parseInt(bpmRange.value);
+  if (isPlaying) Tone.getTransport().bpm.value = parseInt(bpmRange.value);
 });
 
 // ═══════════════════════════════════════════════
