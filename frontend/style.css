@@ -443,6 +443,15 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   transition: width 0.1s linear;
 }
 
+/* Song time ("1:23 / 3:45") or "Bar 3 · Beat 2" next to the bar; fixed
+   width and same-width digits so the bar doesn't jiggle as it changes. */
+#current-line {
+  min-width: 9.5em;
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .cb-bpm-row {
   display: flex;
   align-items: center;

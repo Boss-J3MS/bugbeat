@@ -862,6 +862,7 @@ function startPlayback() {
     initSynths();
     startLoop();
   }
+  startPositionDisplay();
 
   function tick() {
     if (playIndex >= beatData.length) { playIndex = 0; resetFx(); }
@@ -884,8 +885,6 @@ function startPlayback() {
     }
 
     const stayMs = SEVERITY_FX[beat.severity]?.stayMs || 300;
-    progressFill.style.width = `${Math.round(((playIndex + 1) / beatData.length) * 100)}%`;
-    currentLine.textContent  = `Line ${beat.line}`;
     playIndex++;
     playTimer = setTimeout(tick, stayMs);
   }
@@ -898,8 +897,76 @@ function stopPlayback() {
   stopLoop(); stopAudioFile(); resetFx();
   playBtn.textContent = '▶';
   document.querySelectorAll('.cb-beat').forEach(el => el.classList.remove('cb-beat--active'));
-  progressFill.style.width = '0%';
-  currentLine.textContent  = '—';
+  stopPositionDisplay();
+}
+
+// ── Playback position (progress bar + label) ───
+// Shows where the music is, not which code line is playing:
+//  • uploaded track → song time, e.g. "1:23 / 3:45" (the bar fills over
+//    the whole song, then starts again when the track loops)
+//  • generated music → "Bar 3 · Beat 2" (the bar fills over each 4-bar
+//    phrase, the length of the generated chord loop)
+// The current code line is still highlighted in the editor and beat grid.
+const PHRASE_BARS = 4;
+let positionTimer = null;
+let trackPos = 0;        // seconds into the uploaded track
+let trackLastT = 0;      // audioContext time of the last update
+let lastProgress = 0;
+
+function formatTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function setProgress(fraction, label) {
+  const pct = Math.max(0, Math.min(1, fraction)) * 100;
+  // Jump straight back to the start when it wraps, instead of animating
+  // backwards across the bar.
+  progressFill.style.transition = pct < lastProgress ? 'none' : '';
+  progressFill.style.width = `${pct.toFixed(1)}%`;
+  progressFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(pct)));
+  lastProgress = pct;
+  currentLine.textContent = label;
+}
+
+function updatePositionDisplay() {
+  if (audioSource && audioBuffer && audioContext) {
+    // The track's speed changes with the error effects, so add up the
+    // time actually played at each speed.
+    const now = audioContext.currentTime;
+    trackPos += (now - trackLastT) * audioSource.playbackRate.value;
+    trackLastT = now;
+    const dur = audioBuffer.duration || 0;
+    if (dur > 0) trackPos %= dur;
+    setProgress(dur ? trackPos / dur : 0, `${formatTime(trackPos)} / ${formatTime(dur)}`);
+    return;
+  }
+  const transport = (typeof Tone !== 'undefined') ? Tone.getTransport() : null;
+  if (transport && transport.state === 'started') {
+    const beatsPerBar = Number(transport.timeSignature) || 4;
+    const quarters    = transport.ticks / transport.PPQ;
+    const bar         = Math.floor(quarters / beatsPerBar);
+    const beat        = Math.floor(quarters % beatsPerBar);
+    const inPhrase    = (quarters % (PHRASE_BARS * beatsPerBar)) / (PHRASE_BARS * beatsPerBar);
+    setProgress(inPhrase, `Bar ${bar + 1} · Beat ${beat + 1}`);
+  }
+}
+
+function startPositionDisplay() {
+  stopPositionDisplay(false);
+  trackPos   = 0;
+  trackLastT = audioContext ? audioContext.currentTime : 0;
+  updatePositionDisplay();
+  positionTimer = setInterval(updatePositionDisplay, 100);
+}
+
+function stopPositionDisplay(reset = true) {
+  clearInterval(positionTimer);
+  positionTimer = null;
+  if (reset) {
+    lastProgress = 0;
+    setProgress(0, '—');
+  }
 }
 
 playBtn.addEventListener('click', async () => {
