@@ -438,6 +438,12 @@ let audioSource    = null;
 let audioGain      = null;
 let audioDistNode  = null;
 let uploadedFile   = null;
+let currentTrackName = null;   // name of the uploaded/saved track in use
+
+// Longest track that can be loaded. The browser unpacks the whole song
+// into memory to apply the error effects (about 20 MB per minute), so
+// very long files could crash the tab.
+const MAX_TRACK_SECONDS = 10 * 60;
 
 // ── Tone.js nodes ──────────────────────────────
 let bassSynth, padSynth, melodySynth, leadSynth;
@@ -500,41 +506,93 @@ const SEVERITY_FX = {
 // picked file and for a saved track from "My tracks" (tracks.js).
 // Returns true if the audio could be decoded.
 async function useAudioTrack(arrayBuffer, name) {
-  audioLabel.textContent = `🎵 ${name}`;
-  audioRemoveBtn.hidden  = false;
   try {
     // Same larger 'playback' buffer for uploaded tracks (see above).
     audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'playback' });
-    audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    const decoded = await audioContext.decodeAudioData(arrayBuffer);
+    if (decoded.duration > MAX_TRACK_SECONDS) {
+      showTooLongNotice(name, decoded.duration);
+      return false;
+    }
+    audioBuffer = decoded;
+    currentTrackName = name;
+    audioLabel.textContent = `🎵 ${name}`;
+    audioRemoveBtn.hidden  = false;
     setMusicStatus(`✅ "${name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
+    updateNowPlaying();
     return true;
   } catch(err) {
     setMusicStatus('⚠ Could not decode audio file. Try an MP3 or WAV.', 'error');
-    audioBuffer = null;
     return false;
   }
+}
+
+function formatMinutes(sec) {
+  const s = Math.round(sec);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function showTooLongNotice(name, seconds) {
+  showNotice({
+    title: 'Song is too long',
+    message: `"${name}" is ${formatMinutes(seconds)} long. BugBeat can play songs up to ${MAX_TRACK_SECONDS / 60} minutes. ` +
+             'Please choose a shorter song or trim this one.'
+  });
+}
+
+// Reads just the file's length (without unpacking the whole song), so a
+// too-long file is turned away before it can use up the browser's memory.
+// Resolves to the length in seconds, or null if the browser can't tell.
+function getAudioDuration(file) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const probe = new Audio();
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      probe.removeAttribute('src');
+      resolve(value);
+    };
+    probe.preload = 'metadata';
+    probe.onloadedmetadata = () => done(Number.isFinite(probe.duration) ? probe.duration : null);
+    probe.onerror = () => done(null);
+    setTimeout(() => done(null), 5000);
+    probe.src = url;
+  });
 }
 
 if (audioUpload) {
   audioUpload.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const seconds = await getAudioDuration(file);
+    if (seconds && seconds > MAX_TRACK_SECONDS) {
+      showTooLongNotice(file.name, seconds);
+      audioUpload.value = '';
+      return;
+    }
     uploadedFile = file;
     const ok = await useAudioTrack(await file.arrayBuffer(), file.name);
     // Also keep it in the user's saved tracks (tracks.js).
     if (ok && window.saveTrackToAccount) saveTrackToAccount(file);
+    // Clear the picker so choosing the same file again still works (e.g.
+    // re-uploading a song after deleting a saved track to make room).
+    audioUpload.value = '';
   });
 }
 
 if (audioRemoveBtn) {
   audioRemoveBtn.addEventListener('click', () => {
-    uploadedFile = null; audioBuffer = null;
+    uploadedFile = null; audioBuffer = null; currentTrackName = null;
     audioUpload.value = '';
     audioLabel.textContent = 'Upload audio';
     audioRemoveBtn.hidden  = true;
     setMusicStatus('Audio removed — using synthesized music', '');
     stopAudioFile();
     if (window.markActiveTrack) markActiveTrack(null);
+    updateNowPlaying();
   });
 }
 
@@ -706,6 +764,7 @@ function applyMusicStyle(key, { announce = true } = {}) {
   if (wasPlaying) startPlayback();
 
   try { localStorage.setItem(STYLE_KEY, key); } catch (e) {}
+  updateNowPlaying();
   if (announce) {
     setMusicStatus(
       audioBuffer
@@ -723,6 +782,80 @@ if (styleSelect) {
   styleSelect.value = saved;
   applyMusicStyle(saved, { announce: false });
   styleSelect.addEventListener('change', () => applyMusicStyle(styleSelect.value));
+}
+
+// ── "Now playing" line in the Playback panel ───
+// Always shows what Play will use: the user's track, or the generated
+// music style.
+function updateNowPlaying() {
+  const nameEl = document.getElementById('now-playing-name');
+  const kindEl = document.getElementById('now-playing-kind');
+  if (!nameEl || !kindEl) return;
+  if (audioBuffer && currentTrackName) {
+    nameEl.textContent = `🎵 ${currentTrackName}`;
+    nameEl.title = currentTrackName;
+    kindEl.textContent = 'Your track';
+  } else {
+    const opt = styleSelect?.selectedOptions?.[0];
+    const label = opt ? opt.textContent.trim() : (getStyle().name || 'Generated music');
+    nameEl.textContent = label;
+    nameEl.title = label;
+    kindEl.textContent = 'Generated';
+  }
+}
+
+// ── Notice pop-up ──────────────────────────────
+// A simple message box (title, text, OK, and an optional extra button).
+// Built once on first use; shared with tracks.js.
+function showNotice({ title, message, actionLabel, onAction }) {
+  let modal = document.getElementById('notice-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'notice-modal';
+    modal.className = 'cb-bugreport-modal';
+    modal.hidden = true;
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-labelledby', 'notice-title');
+    modal.innerHTML = `
+      <div class="cb-bugreport-modal__box cb-notice">
+        <div class="cb-bugreport-modal__header">
+          <span id="notice-title" class="cb-bugreport-modal__title"></span>
+          <button type="button" class="cb-btn cb-btn--ghost" data-notice-close title="Close" aria-label="Close">✕</button>
+        </div>
+        <p id="notice-msg" class="cb-bugreport-modal__hint cb-notice__msg"></p>
+        <div class="cb-bugreport-modal__actions">
+          <button type="button" id="notice-action" class="cb-btn cb-btn--primary" hidden></button>
+          <button type="button" id="notice-ok" class="cb-btn cb-btn--ghost" data-notice-close>OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => { modal.hidden = true; };
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal || e.target.closest('[data-notice-close]')) close();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !modal.hidden) close();
+    });
+  }
+  modal.querySelector('#notice-title').textContent = title || '';
+  modal.querySelector('#notice-msg').textContent = message || '';
+  const action = modal.querySelector('#notice-action');
+  if (actionLabel && onAction) {
+    action.textContent = actionLabel;
+    action.hidden = false;
+    action.onclick = () => {
+      modal.hidden = true;
+      // After this click has finished (it would otherwise also count as
+      // a click outside the ☰ menu and close it again).
+      setTimeout(onAction, 0);
+    };
+  } else {
+    action.hidden = true;
+    action.onclick = null;
+  }
+  modal.hidden = false;
+  modal.querySelector('#notice-ok').focus();
 }
 
 function setMusicStatus(msg, state) {

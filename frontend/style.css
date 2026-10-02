@@ -1529,3 +1529,48 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 .cb-tracks__msg--ok    { color: var(--accent); }
 .cb-tracks__msg--warn  { color: var(--warning); }
 .cb-tracks__msg--error { color: var(--critical); }
+
+/* ── Now playing (Playback panel) ─────────────── */
+.cb-now-playing {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.75rem;
+  min-width: 0;
+}
+.cb-now-playing__label {
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.cb-now-playing__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: 600;
+}
+.cb-now-playing__kind {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+/* My tracks: limits line + highlight when opened from the "full" pop-up */
+.cb-tracks__limits { font-size: 0.65rem; color: var(--text-muted); margin-top: -0.2rem; }
+.cb-tracks--flash { animation: cb-tracks-flash 1.6s ease; border-radius: var(--radius-sm); }
+@keyframes cb-tracks-flash {
+  0%, 60% { box-shadow: 0 0 0 2px var(--accent); }
+  100%    { box-shadow: 0 0 0 2px transparent; }
+}
+.cb-notice__msg { line-height: 1.5; }

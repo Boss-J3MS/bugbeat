@@ -42,10 +42,39 @@
     return (data.error || fallback) + (data.ref ? ` (code: ${data.ref})` : '');
   }
 
+  function mbText(bytes) {
+    return `${Math.round(bytes / 1024 / 1024)} MB`;
+  }
+
+  // Opens the ☰ menu at My tracks (used by the "My tracks is full" pop-up).
+  function openMyTracks() {
+    const panel = document.getElementById('menu-panel');
+    if (panel && panel.hidden && menuBtn) menuBtn.click();
+    box.scrollIntoView({ block: 'nearest' });
+    box.classList.add('cb-tracks--flash');
+    setTimeout(() => box.classList.remove('cb-tracks--flash'), 1600);
+  }
+
+  function showFullNotice(name) {
+    if (typeof showNotice !== 'function') return;
+    showNotice({
+      title: 'My tracks is full',
+      message: `You already have ${limits.max_files} saved tracks. "${name}" is playing now, but it wasn't saved. ` +
+               'To save it, delete one of your saved tracks in My tracks, then upload it again.',
+      actionLabel: 'Open My tracks',
+      onAction: openMyTracks
+    });
+  }
+
   function render() {
     box.hidden = !limits.enabled;
     if (!limits.enabled) return;
     countEl.textContent = `${tracks.length} / ${limits.max_files}`;
+    const limitsEl = document.getElementById('tracks-limits');
+    if (limitsEl) {
+      const mins = typeof MAX_TRACK_SECONDS === 'number' ? ` · ${MAX_TRACK_SECONDS / 60} min` : '';
+      limitsEl.textContent = `Up to ${limits.max_files} tracks · ${mbText(limits.max_bytes)}${mins} each`;
+    }
     listEl.innerHTML = '';
     if (!tracks.length) {
       const empty = document.createElement('div');
@@ -166,11 +195,19 @@
     activeId = null;
     render();
     if (file.size > limits.max_bytes) {
-      showMsg(`Playing it now, but it's too big to save (max ${Math.round(limits.max_bytes / 1024 / 1024)} MB).`, 'warn');
+      showMsg('');
+      if (typeof showNotice === 'function') {
+        showNotice({
+          title: 'Track not saved',
+          message: `"${file.name}" is ${mbText(file.size)}. It's playing now, but saved tracks can be up to ` +
+                   `${mbText(limits.max_bytes)}, so it wasn't added to My tracks.`
+        });
+      }
       return;
     }
     if (tracks.length >= limits.max_files) {
-      showMsg(`Playing it now. You have ${limits.max_files} saved tracks — delete one to save this track too.`, 'warn');
+      showMsg('');
+      showFullNotice(file.name);
       return;
     }
     busy = true;
@@ -186,6 +223,13 @@
         },
         body: file
       });
+      if (res.status === 409) {
+        // Filled up from another tab/device in the meantime.
+        showMsg('');
+        await load();
+        showFullNotice(file.name);
+        return;
+      }
       if (!res.ok) throw new Error(await errorText(res, 'Could not save the track.'));
       const data = await res.json();
       tracks.unshift(data.track);

@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=12" />
+  <link rel="stylesheet" href="style.css?v=13" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -105,6 +105,7 @@
                 <span>My tracks</span>
                 <span id="tracks-count" class="cb-tracks__count"></span>
               </div>
+              <div id="tracks-limits" class="cb-tracks__limits"></div>
               <div id="tracks-list" class="cb-tracks__list"></div>
               <div id="tracks-msg" class="cb-tracks__msg" hidden></div>
             </div>
@@ -194,6 +195,12 @@
       <div class="cb-panel__header">
         <span class="cb-panel__title">Playback</span>
         <span id="music-status" class="cb-music-status" role="status" aria-live="polite"></span>
+      </div>
+      <!-- What Play will use: the user's track or the generated style (app.js updateNowPlaying). -->
+      <div class="cb-now-playing">
+        <span class="cb-now-playing__label">Now playing</span>
+        <span id="now-playing-name" class="cb-now-playing__name">—</span>
+        <span id="now-playing-kind" class="cb-now-playing__kind"></span>
       </div>
       <div class="cb-playback">
         <button id="play-btn" class="cb-btn cb-btn--play" aria-label="Play" disabled>▶</button>
@@ -489,11 +496,11 @@
   </script>
 
   <script src="popover.js?v=2"></script>
-  <script src="app.js?v=11"></script>
+  <script src="app.js?v=12"></script>
   <script src="history.js?v=4"></script>
   <script src="notif-view.js?v=3"></script>
   <script src="banner.js"></script>
-  <script src="tracks.js"></script>
+  <script src="tracks.js?v=2"></script>
   <script src="theme.js"></script>
   <script src="menu.js?v=2"></script>
   <script src="account.js"></script>

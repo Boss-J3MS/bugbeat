@@ -1601,7 +1601,7 @@ app.get('/music-preferences', requireAuth, async (req, res) => {
 // bucket stays private and every read/delete is checked against the
 // logged-in user. Limits: AUDIO_MAX_BYTES per track, AUDIO_MAX_FILES per
 // user (keeps the whole app well inside R2's 10 GB free storage).
-const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
+const AUDIO_MAX_BYTES = 50 * 1024 * 1024;
 const AUDIO_MAX_FILES = 5;
 
 const audioUploadLimiter = rateLimit({
