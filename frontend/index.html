@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=11" />
+  <link rel="stylesheet" href="style.css?v=12" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -29,14 +29,6 @@
     </div>
     <p class="cb-header__tagline">BugBeat</p>
     <div class="cb-header__controls">
-      <div class="cb-music-search">
-        <input type="text" id="music-search" class="cb-input cb-input--search" placeholder="🎵 e.g. Hawak Mo Ang Beat, dark jazz, sad lofi…" autocomplete="off" spellcheck="false" />
-        <button id="music-search-btn" class="cb-btn cb-btn--ghost">🔍</button>
-        <span id="music-status" class="cb-music-status"></span>
-        <a href="https://getsongbpm.com" target="_blank" rel="noopener noreferrer"
-           style="font-size:0.65rem; color:var(--text-muted); text-decoration:none; margin-left:6px; white-space:nowrap;"
-           title="Real-song tempo/key data provided by GetSongBPM.com">Tempo via GetSongBPM.com</a>
-      </div>
       <select id="lang-select" class="cb-select" aria-label="Programming language">
         <option value="auto">Auto-detect</option>
         <option value="javascript">JavaScript</option>
@@ -89,6 +81,17 @@
         <div id="menu-panel" class="cb-menu__panel" hidden>
           <div class="cb-menu__section">
             <div class="cb-menu__heading">Sound</div>
+            <!-- Style of the generated music (used when no track is loaded). -->
+            <label class="cb-menu__field">
+              <span>Music style</span>
+              <select id="style-select" class="cb-select" aria-label="Music style">
+                <option value="lofi">🌙 Lo-fi Chill</option>
+                <option value="jazz">🎷 Smooth Jazz</option>
+                <option value="rock">🎸 Rock Drive</option>
+                <option value="electronic">🎛️ Electronic Pulse</option>
+                <option value="ambient">🌊 Ambient Calm</option>
+              </select>
+            </label>
             <div class="cb-audio-upload">
               <label for="audio-upload" class="cb-btn cb-btn--ghost cb-menu__item" title="Upload an MP3 or WAV as backing track">
                 🎧 <span id="audio-label">Upload audio</span>
@@ -190,6 +193,7 @@
     <section class="cb-panel cb-panel--playback" aria-label="Playback Controls">
       <div class="cb-panel__header">
         <span class="cb-panel__title">Playback</span>
+        <span id="music-status" class="cb-music-status" role="status" aria-live="polite"></span>
       </div>
       <div class="cb-playback">
         <button id="play-btn" class="cb-btn cb-btn--play" aria-label="Play" disabled>▶</button>
@@ -485,7 +489,7 @@
   </script>
 
   <script src="popover.js?v=2"></script>
-  <script src="app.js?v=10"></script>
+  <script src="app.js?v=11"></script>
   <script src="history.js?v=4"></script>
   <script src="notif-view.js?v=3"></script>
   <script src="banner.js"></script>

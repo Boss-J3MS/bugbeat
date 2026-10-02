@@ -350,9 +350,8 @@ const mlRiskBadge    = document.getElementById('ml-risk-badge');
 const mlScore        = document.getElementById('ml-score');
 const mlLang         = document.getElementById('ml-lang');
 const mlSummary      = document.getElementById('ml-summary');
-const musicSearch    = document.getElementById('music-search');
-const musicSearchBtn = document.getElementById('music-search-btn');
 const musicStatus    = document.getElementById('music-status');
+const styleSelect    = document.getElementById('style-select');
 const audioUpload    = document.getElementById('audio-upload');
 const audioLabel     = document.getElementById('audio-label');
 const audioRemoveBtn = document.getElementById('audio-remove-btn');
@@ -586,90 +585,150 @@ function makeDistortionCurve(amount) {
 }
 
 // ═══════════════════════════════════════════════
-// MUSIC SEARCH
+// MUSIC STYLE (☰ menu → Sound → Music style)
 // ═══════════════════════════════════════════════
-if (musicSearchBtn) musicSearchBtn.addEventListener('click', doMusicSearch);
-if (musicSearch)    musicSearch.addEventListener('keydown', e => { if (e.key === 'Enter') doMusicSearch(); });
+// Ready-made styles for the generated music, played when no track is
+// uploaded. Each one only lists what differs from the Lo-fi default.
+const STYLE_PRESETS = {
+  lofi: { ...DEFAULT_STYLE, name: 'Lo-fi Chill' },
 
-async function doMusicSearch() {
-  const query = musicSearch.value.trim();
-  if (!query) return;
-  musicSearchBtn.disabled = true;
-  musicSearchBtn.textContent = '⏳';
-  setMusicStatus('Searching…', 'loading');
-  try {
-    const res  = await fetch(`${BACKEND_URL}/music-search`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query })
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Search failed');
-    currentStyle = { ...DEFAULT_STYLE, ...data.style,
-      loopPattern: data.style.loopPattern || DEFAULT_STYLE.loopPattern,
-      padChords:   data.style.padChords || DEFAULT_STYLE.padChords,
-      bassLine:    data.style.bassLine  || DEFAULT_STYLE.bassLine,
-      leadNotes:   data.style.leadNotes || DEFAULT_STYLE.leadNotes
-    };
-    bpmRange.value = currentStyle.bpm;
-    bpmVal.textContent = currentStyle.bpm;
-    updateBpmFill();
-    // teardownSynths() disposes the active instruments and stops the
-    // background loop, but it doesn't touch isPlaying, the Play button,
-    // or the line-by-line beat timer — so searching mid-playback used to
-    // leave the button stuck on "⏸" with the full arrangement silently
-    // gone, while the timer kept firing sparse accent notes on the
-    // freshly-rebuilt (but never restarted) synths. Stopping and
-    // restarting playback around the rebuild keeps that in sync, so a
-    // search always resumes with the *complete* matched arrangement
-    // instead of a half-torn-down one.
-    const wasPlaying = isPlaying;
-    if (wasPlaying) stopPlayback();
-    if (synthsReady) teardownSynths();
-    initSynths();
-    if (wasPlaying) startPlayback();
-    setMusicStatus(`🎵 ${currentStyle.name} — ${currentStyle.description}`, 'ok');
-    // Mirrors how analysis results auto-save to history after every
-    // Analyze — no separate "save" step there either. The backend route
-    // for this already existed and worked fine; it just had nothing
-    // calling it, which is why music_preferences was empty.
-    saveMusicPreference(query, currentStyle);
-  } catch (err) {
-    setMusicStatus(`⚠ ${err.message}`, 'error');
-  } finally {
-    musicSearchBtn.disabled = false;
-    musicSearchBtn.textContent = '🔍';
+  jazz: {
+    ...DEFAULT_STYLE,
+    name: 'Smooth Jazz',
+    description: 'Mellow ii–V–I changes with a soft ride cymbal',
+    bpm: 100,
+    oscillatorType: 'sine',
+    chordProgression: [['D3','F3','A3','C4'],['G2','B2','D3','F3'],['C3','E3','G3','B3'],['A2','C3','E3','G3']],
+    bassLine:  ['D2','F2','G2','B1','C2','E2','A1','C2'],
+    padChords: [['F4','A4','C5'],['B3','D4','F4'],['E4','G4','B4'],['C4','E4','G4']],
+    leadNotes: ['A4','C5','D5','E5','G5','A5','B5','D6'],
+    chordMap:  { clean: ['C4','E4'], warning: ['F4','B4'], error: ['Eb3','A3'], critical: ['C3','F#3'] },
+    envelope:  { attack: 0.02, decay: 0.4, sustain: 0.3, release: 1.0 },
+    reverbWet: 0.35,
+    chorusWet: 0.15,
+    volume:    -13,
+    loopPattern: {
+      kick:    [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0],
+      snare:   [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+      hihat:   [1,0,0,1,1,0,0,1,1,0,0,1,1,0,0,1],
+      openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    },
+    drumKit: { kickPitchDecay: 0.05, kickOctaves: 6, snareNoiseType: 'pink', hihatFrequency: 300, hihatDecay: 0.08 }
+  },
+
+  rock: {
+    ...DEFAULT_STYLE,
+    name: 'Rock Drive',
+    description: 'Driving power chords and a straight backbeat',
+    bpm: 125,
+    oscillatorType: 'sawtooth',
+    chordProgression: [['E3','B3','E4'],['C3','G3','C4'],['G2','D3','G3'],['D3','A3','D4']],
+    bassLine:  ['E2','E2','C2','C2','G1','G1','D2','D2'],
+    padChords: [['E4','G4','B4'],['C4','E4','G4'],['G3','B3','D4'],['D4','F#4','A4']],
+    leadNotes: ['E4','G4','A4','B4','D5','E5','G5','B5'],
+    chordMap:  { clean: ['E4','B4'], warning: ['F4','C5'], error: ['Bb3','E4'], critical: ['E3','Bb3'] },
+    envelope:  { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.4 },
+    reverbWet: 0.2,
+    chorusWet: 0.1,
+    volume:    -17,
+    loopPattern: {
+      kick:    [1,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0],
+      snare:   [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+      hihat:   [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+      openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0]
+    },
+    drumKit: { kickPitchDecay: 0.05, kickOctaves: 6, snareNoiseType: 'white', hihatFrequency: 500, hihatDecay: 0.03 }
+  },
+
+  electronic: {
+    ...DEFAULT_STYLE,
+    name: 'Electronic Pulse',
+    description: 'Four-on-the-floor beat with an offbeat bass',
+    bpm: 124,
+    oscillatorType: 'square',
+    chordProgression: [['A2','C3','E3'],['F2','A2','C3'],['C3','E3','G3'],['G2','B2','D3']],
+    bassLine:  ['A1','A2','F1','F2','C2','C3','G1','G2'],
+    padChords: [['A3','C4','E4'],['F3','A3','C4'],['C4','E4','G4'],['G3','B3','D4']],
+    leadNotes: ['A4','C5','E5','G5','A5','C6','E6','G5'],
+    chordMap:  { clean: ['A4','E5'], warning: ['G#4','D5'], error: ['D#4','A4'], critical: ['A3','D#4'] },
+    envelope:  { attack: 0.005, decay: 0.15, sustain: 0.4, release: 0.3 },
+    reverbWet: 0.3,
+    chorusWet: 0.3,
+    volume:    -18,
+    loopPattern: {
+      kick:    [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+      snare:   [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+      hihat:   [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+      openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0]
+    },
+    drumKit: { kickPitchDecay: 0.03, kickOctaves: 10, snareNoiseType: 'white', hihatFrequency: 600, hihatDecay: 0.02 }
+  },
+
+  ambient: {
+    ...DEFAULT_STYLE,
+    name: 'Ambient Calm',
+    description: 'Slow, airy chords with very light percussion',
+    bpm: 70,
+    oscillatorType: 'sine',
+    chordProgression: [['C3','E3','G3','B3'],['A2','C3','E3','G3'],['F2','A2','C3','E3'],['G2','B2','D3','E3']],
+    bassLine:  ['C2','C2','A1','A1','F1','F1','G1','G1'],
+    padChords: [['E4','G4','B4'],['C4','E4','G4'],['A3','C4','E4'],['B3','D4','G4']],
+    leadNotes: ['E5','G5','B5','C6','D6','E6','G6','B5'],
+    chordMap:  { clean: ['C5','G5'], warning: ['B4','F5'], error: ['F4','B4'], critical: ['C4','F#4'] },
+    envelope:  { attack: 0.4, decay: 0.5, sustain: 0.7, release: 2.0 },
+    reverbWet: 0.7,
+    chorusWet: 0.4,
+    volume:    -16,
+    loopPattern: {
+      kick:    [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      snare:   [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+      hihat:   [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+      openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+    },
+    drumKit: { kickPitchDecay: 0.08, kickOctaves: 5, snareNoiseType: 'pink', hihatFrequency: 250, hihatDecay: 0.05 }
   }
+};
+const STYLE_KEY = 'cb-music-style';
+
+// Switches the generated music to a preset. Rebuilds the instruments
+// (and restarts playback if it was playing) so the change is heard
+// straight away.
+function applyMusicStyle(key, { announce = true } = {}) {
+  const preset = STYLE_PRESETS[key] || STYLE_PRESETS.lofi;
+  currentStyle = preset;
+  bpmRange.value = preset.bpm;
+  bpmVal.textContent = preset.bpm;
+  updateBpmFill();
+
+  const wasPlaying = isPlaying;
+  if (wasPlaying) stopPlayback();
+  if (synthsReady) teardownSynths();
+  if (wasPlaying) startPlayback();
+
+  try { localStorage.setItem(STYLE_KEY, key); } catch (e) {}
+  if (announce) {
+    setMusicStatus(
+      audioBuffer
+        ? `🎵 ${preset.name} selected — remove your uploaded track to hear it`
+        : `🎵 ${preset.name} — ${preset.description}`,
+      'ok'
+    );
+  }
+}
+
+if (styleSelect) {
+  let saved = 'lofi';
+  try { saved = localStorage.getItem(STYLE_KEY) || 'lofi'; } catch (e) {}
+  if (!STYLE_PRESETS[saved]) saved = 'lofi';
+  styleSelect.value = saved;
+  applyMusicStyle(saved, { announce: false });
+  styleSelect.addEventListener('change', () => applyMusicStyle(styleSelect.value));
 }
 
 function setMusicStatus(msg, state) {
   if (!musicStatus) return;
   musicStatus.textContent = msg;
   musicStatus.className   = 'cb-music-status' + (state ? ' cb-music-status--' + state : '');
-}
-
-async function saveMusicPreference(query, style) {
-  try {
-    const res = await fetch(`${BACKEND_URL}/music-preferences/save`, {
-      method:  'POST',
-      headers: authHeaders(),
-      body:    JSON.stringify({
-        search_query:    query,
-        style_name:      style.name,
-        bpm:             style.bpm,
-        scale:           Array.isArray(style.scale) ? style.scale.join(',') : (style.scale || null),
-        oscillator_type: style.oscillatorType || null,
-        drum_pattern:    style.loopPattern || null
-      })
-    });
-    if (!res.ok) {
-      const data = await res.json();
-      console.warn('Music preference save failed:', data?.error || res.status);
-    }
-  } catch (err) {
-    // Silent fail — never interrupt the user experience
-    console.warn('Could not save music preference:', err.message);
-  }
 }
 
 // ═══════════════════════════════════════════════
