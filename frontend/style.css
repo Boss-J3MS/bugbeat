@@ -381,6 +381,53 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 .cb-issue--critical .cb-issue__severity { color: var(--critical); }
 .cb-issue__msg { font-size: 0.75rem; color: var(--text); margin-top: 2px; line-height: 1.4; }
 
+/* Fix suggestion under each issue */
+.cb-issue__suggest {
+  margin-top: 0.45rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed color-mix(in srgb, var(--text-muted) 35%, transparent);
+}
+.cb-issue__suggest-label {
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.cb-issue__suggest-text { font-size: 0.73rem; color: var(--text); margin-top: 2px; line-height: 1.45; }
+.cb-issue__fix {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 0.35rem;
+}
+.cb-issue__fix-code {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0.35rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-code);
+  font-size: 0.7rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cb-issue__copy {
+  flex-shrink: 0;
+  padding: 0.25rem 0.55rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  cursor: pointer;
+}
+.cb-issue__copy:hover { color: var(--accent); border-color: var(--accent); }
+
 /* ── Sequencer panel ─────────────────────────── */
 .cb-sequencer {
   flex: 1;

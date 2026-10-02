@@ -1224,7 +1224,9 @@ async function saveAnalysisToHistory(code, lang, lines) {
         line_number:  l.line,
         severity:     l.severity,
         description:  l.message || '',
-        code_snippet: ''
+        code_snippet: '',
+        suggestion:   l.suggestion || '',
+        fix:          l.fix || ''
       }));
 
     // ── Build beat grid array ───────────────────
@@ -1483,12 +1485,39 @@ function renderIssues(issues) {
     issueList.innerHTML = '<div class="cb-empty-state"><span class="cb-empty-state__icon">✓</span><span>No issues found — great code!</span></div>';
     return;
   }
-  issueList.innerHTML = issues.map(iss => `
-    <div class="cb-issue cb-issue--${iss.severity}" data-line="${iss.line}">
-      <span class="cb-issue__line">Line ${iss.line}</span>
-      <span class="cb-issue__severity">${iss.severity}</span>
-      <p class="cb-issue__msg">${iss.message}</p>
+  // Text from the AI is escaped before it goes into the page.
+  const esc = escOutputHtml;
+  issueList.innerHTML = issues.map((iss, i) => `
+    <div class="cb-issue cb-issue--${esc(iss.severity)}" data-line="${Number(iss.line) || 0}">
+      <span class="cb-issue__line">Line ${Number(iss.line) || 0}</span>
+      <span class="cb-issue__severity">${esc(iss.severity)}</span>
+      <p class="cb-issue__msg">${esc(iss.message)}</p>
+      ${iss.suggestion ? `
+        <div class="cb-issue__suggest">
+          <span class="cb-issue__suggest-label">💡 How to fix</span>
+          <p class="cb-issue__suggest-text">${esc(iss.suggestion)}</p>
+        </div>` : ''}
+      ${iss.fix ? `
+        <div class="cb-issue__fix">
+          <pre class="cb-issue__fix-code"><code>${esc(iss.fix)}</code></pre>
+          <button type="button" class="cb-issue__copy" data-fix="${i}" title="Copy the fixed line">Copy</button>
+        </div>` : ''}
     </div>`).join('');
+
+  // Copy the suggested line (without jumping to the line in the editor).
+  issueList.querySelectorAll('.cb-issue__copy').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const text = issues[Number(btn.dataset.fix)]?.fix || '';
+      try {
+        await navigator.clipboard.writeText(text);
+        btn.textContent = 'Copied!';
+      } catch {
+        btn.textContent = 'Copy failed';
+      }
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
 
   issueList.querySelectorAll('.cb-issue').forEach(el => {
     el.addEventListener('click', () => {

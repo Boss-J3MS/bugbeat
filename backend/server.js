@@ -371,15 +371,20 @@ For EACH line, identify:
 - Bad practices or code smells (unused variables, missing semicolons, etc.)
 - Missing error handling or security issues
 
+For every line that is NOT clean, also give:
+- "suggestion": one or two short, beginner-friendly sentences explaining how to fix it and why
+- "fix": the corrected version of that line of code (keep the original indentation), or "" if the fix is not a one-line change
+For clean lines, leave "message", "suggestion" and "fix" as "".
+
 Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 
 Format:
 {
   "lines": [
-    { "line": 1, "severity": "clean", "message": "" },
-    { "line": 2, "severity": "warning", "message": "Missing semicolon" },
-    { "line": 3, "severity": "error", "message": "Off-by-one: use i < items.length" },
-    { "line": 4, "severity": "critical", "message": "Null dereference risk" }
+    { "line": 1, "severity": "clean", "message": "", "suggestion": "", "fix": "" },
+    { "line": 2, "severity": "warning", "message": "Missing semicolon", "suggestion": "End the statement with a semicolon so it isn't joined with the next line by mistake.", "fix": "let total = 0;" },
+    { "line": 3, "severity": "error", "message": "Off-by-one: loop reads past the end of the array", "suggestion": "Arrays start at index 0, so the last index is length - 1. Use < instead of <=.", "fix": "for (let i = 0; i < items.length; i++) {" },
+    { "line": 4, "severity": "critical", "message": "Null dereference risk", "suggestion": "user can be null here. Check it before reading its properties.", "fix": "if (user) console.log(user.name);" }
   ]
 }
 
@@ -399,12 +404,20 @@ ${code}
       return res.status(502).json({ error: 'Gemini returned no line data.' });
     }
     const valid = new Set(['clean','warning','error','critical']);
+    const text_ = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
     res.json({
-      lines: lines.map(l => ({
-        line:     typeof l.line === 'number' ? l.line : 0,
-        severity: valid.has(l.severity) ? l.severity : 'clean',
-        message:  typeof l.message === 'string' ? l.message : ''
-      }))
+      lines: lines.map(l => {
+        const severity = valid.has(l.severity) ? l.severity : 'clean';
+        const clean    = severity === 'clean';
+        return {
+          line:       typeof l.line === 'number' ? l.line : 0,
+          severity,
+          message:    text_(l.message, 500),
+          // How to fix it (plain text) and the corrected line of code.
+          suggestion: clean ? '' : text_(l.suggestion, 600),
+          fix:        clean ? '' : text_(l.fix, 500).replace(/\s+$/, '')
+        };
+      })
     });
   } catch (err) {
     console.error('/analyze error:', err.message);
@@ -1364,23 +1377,39 @@ app.post('/history/save', requireAuth, async (req, res) => {
 
     // Step 3: Save to ISSUES
     if (issues.length > 0) {
-      const issueValues = issues
-        .filter(i => i.severity !== 'clean')
-        .map(i => [
-          analysisId,
-          i.line,
-          i.severity,
-          i.message || i.description || '',
-          i.code_snippet || ''
-        ]);
+      const kept = issues.filter(i => i.severity !== 'clean');
+      const base = i => [
+        analysisId,
+        i.line_number ?? i.line,
+        i.severity,
+        String(i.message || i.description || '').slice(0, 1000),
+        String(i.code_snippet || '').slice(0, 1000)
+      ];
 
-      if (issueValues.length > 0) {
-        await db.query(
-          `INSERT INTO issues
-            (analysis_id, line_number, severity, description, code_snippet)
-           VALUES ?`,
-          [issueValues]
-        );
+      if (kept.length > 0) {
+        try {
+          // With the fix suggestion and corrected line (issues.suggestion
+          // and issues.fix_code columns).
+          await db.query(
+            `INSERT INTO issues
+              (analysis_id, line_number, severity, description, code_snippet, suggestion, fix_code)
+             VALUES ?`,
+            [kept.map(i => [...base(i),
+              String(i.suggestion || '').slice(0, 1000) || null,
+              String(i.fix || i.fix_code || '').slice(0, 1000) || null])]
+          );
+        } catch (err) {
+          if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+          // Those columns haven't been added to this database yet: save
+          // the issues without them instead of failing the whole save.
+          console.warn('[history] issues.suggestion/fix_code columns missing — saving without fix suggestions');
+          await db.query(
+            `INSERT INTO issues
+              (analysis_id, line_number, severity, description, code_snippet)
+             VALUES ?`,
+            [kept.map(base)]
+          );
+        }
       }
     }
 
@@ -1467,14 +1496,26 @@ app.get('/history/:id', requireAuth, async (req, res) => {
       [analysisId]
     );
 
-    // Get issues
-    const [issues] = await db.query(
-      `SELECT line_number, severity, description, code_snippet
-       FROM issues
-       WHERE analysis_id = ?
-       ORDER BY line_number ASC`,
-      [analysisId]
-    );
+    // Get issues (with fix suggestions when those columns exist)
+    let issues;
+    try {
+      [issues] = await db.query(
+        `SELECT line_number, severity, description, code_snippet, suggestion, fix_code
+         FROM issues
+         WHERE analysis_id = ?
+         ORDER BY line_number ASC`,
+        [analysisId]
+      );
+    } catch (err) {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      [issues] = await db.query(
+        `SELECT line_number, severity, description, code_snippet
+         FROM issues
+         WHERE analysis_id = ?
+         ORDER BY line_number ASC`,
+        [analysisId]
+      );
+    }
 
     // Get beat grid
     const [beatGrid] = await db.query(
