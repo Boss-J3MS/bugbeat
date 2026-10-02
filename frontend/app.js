@@ -371,6 +371,12 @@ function setCode(code, lang = 'javascript') {
   monacoEditor.setScrollPosition({ scrollTop: 0 });
 }
 
+// Display names for the language list values.
+const LANG_LABELS = {
+  javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
+  java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+};
+
 function getMonacoLang(lang) {
   const map = { javascript: 'javascript', python: 'python', typescript: 'typescript',
                 java: 'java', cpp: 'cpp', rust: 'rust', go: 'go', auto: 'javascript' };
@@ -1197,14 +1203,32 @@ analyzeBtn.addEventListener('click', async () => {
   const mlPromise = fetchComplexity(code, lang);
 
   try {
-    const lines = await analyzeWithBackend(code, lang);
+    const { lines, language } = await analyzeWithBackend(code, lang);
+    // A picked language stays as it is. With Auto-detect, show what was
+    // detected, switch the editor's highlighting to it, and save it to
+    // History (instead of always saving "javascript").
+    let savedLang = lang;
+    if (lang !== 'auto' && LANG_LABELS[lang]) {
+      setMusicStatus(`✓ Checked as ${LANG_LABELS[lang]}`, '');
+    }
+    if (lang === 'auto') {
+      const name = LANG_LABELS[language];
+      if (name) {
+        savedLang = language;
+        if (monacoEditor) monaco.editor.setModelLanguage(monacoEditor.getModel(), getMonacoLang(language));
+        setMusicStatus(`🔍 Detected language: ${name}`, 'ok');
+      } else {
+        savedLang = 'javascript';   // same fallback History always used
+        setMusicStatus('🔍 Could not tell which language this is — pick it from the list for a stricter check', '');
+      }
+    }
     beatData = lines;
     renderSequencer(lines);
     renderIssues(lines.filter(l => l.severity !== 'clean'));
     updateStats(lines);
     highlightEditorLines(lines);
     // ✅ Save analysis session to history
-    await saveAnalysisToHistory(code, lang, lines);
+    await saveAnalysisToHistory(code, savedLang, lines);
   } catch (err) {
     showError(err.message || 'Analysis failed. Try again.');
   } finally {
@@ -1231,7 +1255,7 @@ async function analyzeWithBackend(code, lang) {
   if (!res.ok) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
   const lines = data?.lines;
   if (!Array.isArray(lines) || !lines.length) throw new Error('Server returned no data. Try again.');
-  return lines;
+  return { lines, language: data.language || lang };
 }
 
 // ═══════════════════════════════════════════════

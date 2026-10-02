@@ -263,6 +263,13 @@ function doRestoreSession(d) {
   if (snapshot?.submitted_code && typeof setCode === 'function') {
     setCode(snapshot.submitted_code, analysis.language?.toLowerCase() || 'javascript');
   }
+  // Put the language list back to the session's language too, so the
+  // next Analyze/Run checks it as that language.
+  const langSel = document.getElementById('lang-select');
+  const savedLang = analysis.language?.toLowerCase();
+  if (langSel && savedLang && [...langSel.options].some(o => o.value === savedLang)) {
+    langSel.value = savedLang;
+  }
 
   // 2. Restore beat grid
   if (beatGrid?.length && typeof renderSequencer === 'function') {

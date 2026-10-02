@@ -359,10 +359,30 @@ app.post('/analyze', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
 
-  const langLabel  = lang === 'auto' ? '' : `${lang} `;
+  // The language picked in the app. Anything other than one of these is
+  // treated as Auto-detect.
+  const LANG_NAMES = {
+    javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
+    java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+  };
+  const langName   = LANG_NAMES[lang] || null;          // null = Auto-detect
+  const langLabel  = langName ? `${langName} ` : '';
   const totalLines = code.split('\n').length;
 
+  // A picked language is strict: the code is checked only as that
+  // language, and code written in another language is reported as
+  // errors instead of being silently analyzed as whatever it looks like.
+  // Only Auto-detect works out the language itself.
+  const languageRule = langName
+    ? `The user selected ${langName}. Treat the code strictly as ${langName} and check it only against ${langName} rules.
+Do NOT guess or switch to another language. If a line is not valid ${langName} (for example, it is written in a different programming language), mark it "error" (or "critical" if the code cannot run at all) with a message like "Not valid ${langName} syntax", and in the suggestion explain how to write it in ${langName} or to choose the correct language.
+Set "language" to "${lang}".`
+    : `The user chose Auto-detect. First work out which programming language the code is written in, then analyze it as that language.
+Set "language" to one of: "javascript", "python", "typescript", "java", "cpp", "rust", "go", or "other".`;
+
   const prompt = `You are a code analysis engine. Analyze every line of the following ${langLabel}code.
+
+${languageRule}
 
 For EACH line, identify:
 - Syntax errors
@@ -380,6 +400,7 @@ Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
 
 Format:
 {
+  "language": "python",
   "lines": [
     { "line": 1, "severity": "clean", "message": "", "suggestion": "", "fix": "" },
     { "line": 2, "severity": "warning", "message": "Missing semicolon", "suggestion": "End the statement with a semicolon so it isn't joined with the next line by mistake.", "fix": "let total = 0;" },
@@ -405,7 +426,12 @@ ${code}
     }
     const valid = new Set(['clean','warning','error','critical']);
     const text_ = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
+    // A picked language always comes back unchanged; for Auto-detect,
+    // the language Gemini detected (or "other").
+    const detected = String(parsed?.language || '').toLowerCase();
+    const language = langName ? lang : (LANG_NAMES[detected] ? detected : 'other');
     res.json({
+      language,
       lines: lines.map(l => {
         const severity = valid.has(l.severity) ? l.severity : 'clean';
         const clean    = severity === 'clean';
