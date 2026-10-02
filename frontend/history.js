@@ -227,8 +227,12 @@ function renderHistoryDetail(data) {
     issueEl.innerHTML = issues.map(iss => `
       <div class="cb-history-issue">
         <div class="cb-history-issue__dot" style="background:${sevColor(iss.severity)}"></div>
-        <span class="cb-history-issue__line">Ln ${iss.line_number}</span>
-        <span class="cb-history-issue__desc">${iss.description || iss.code_snippet || ''}</span>
+        <span class="cb-history-issue__line">Ln ${Number(iss.line_number) || 0}</span>
+        <div class="cb-history-issue__body">
+          <span class="cb-history-issue__desc">${escHistory(iss.description || iss.code_snippet || '')}</span>
+          ${iss.suggestion ? `<span class="cb-history-issue__suggest">💡 ${escHistory(iss.suggestion)}</span>` : ''}
+          ${iss.fix_code ? `<code class="cb-history-issue__fix">${escHistory(iss.fix_code)}</code>` : ''}
+        </div>
       </div>`).join('');
   }
 
@@ -274,9 +278,11 @@ function doRestoreSession(d) {
   // 3. Restore issues panel
   if (typeof renderIssues === 'function') {
     const issuesMapped = issues.map(i => ({
-      line:     i.line_number,
-      severity: i.severity,
-      message:  i.description || i.code_snippet || ''
+      line:       i.line_number,
+      severity:   i.severity,
+      message:    i.description || i.code_snippet || '',
+      suggestion: i.suggestion || '',
+      fix:        i.fix_code || ''
     }));
     renderIssues(issuesMapped.filter(i => i.severity !== 'clean'));
   }
@@ -335,6 +341,13 @@ function goHistoryPage(page) {
 }
 
 // ── Helpers ────────────────────────────────────
+// Escapes saved text (it came from the AI) before putting it in the page.
+function escHistory(str) {
+  return String(str ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
 // risk_level is stored lowercase ('medium'); show 'Medium'.
 function riskText(r) {
   const s = String(r ?? '');

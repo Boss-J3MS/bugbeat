@@ -425,10 +425,33 @@
   flex-shrink: 0;
 }
 
+.cb-history-issue__body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
 .cb-history-issue__desc {
   font-size: 0.72rem;
   color: var(--text);
   line-height: 1.5;
+}
+.cb-history-issue__suggest {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.cb-history-issue__fix {
+  display: block;
+  padding: 3px 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-code);
+  font-size: 0.68rem;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* Code snapshot */
