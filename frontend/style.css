@@ -1982,19 +1982,6 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
   font-size: 0.75rem;
   color: var(--text);
 }
-.cb-menu__link {
-  align-self: flex-start;
-  background: none;
-  border: none;
-  padding: 0;
-  font-family: var(--font-ui);
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.cb-menu__link:hover { color: var(--text); }
 
 /* Tour step "Resize the panels": show the resize lines. */
 .cb-tour-show-gutters .cb-gutter::after { opacity: 1; }
