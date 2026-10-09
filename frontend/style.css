@@ -723,7 +723,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   text-overflow: ellipsis;
 }
 
-/* "Music style" dropdown in the ☰ menu */
+/* "Music style" dropdown in the settings sidebar */
 .cb-menu__field {
   display: flex;
   align-items: center;
@@ -1028,12 +1028,58 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   gap: 4px;
 }
 
-/* ── ☰ Menu ──────────────────────────────────────
-   Holds the header controls that aren't needed on every analysis
-   (demo loader, Clear, audio upload, account items). Opened/closed by
-   menu.js; positioned like the notifications dropdown. */
-.cb-menu {
-  position: relative;
+/* ── Settings sidebar (☰) ────────────────────────
+   Docked on the left of the workspace; holds the sound and account
+   controls. Shown/hidden by menu.js. On narrow screens it slides over
+   the workspace instead (see the media query below). */
+.cb-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.cb-layout > .cb-workspace {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cb-sidebar {
+  width: 260px;
+  flex: 0 0 260px;
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  padding: 0.35rem 0;
+  /* Runs the full height of the workspace beside it. */
+  align-self: stretch;
+  animation: cb-sidebar-in 0.18s ease-out;
+}
+@keyframes cb-sidebar-in {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cb-sidebar__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 950;
+}
+
+@media (max-width: 768px) {
+  .cb-sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    overflow-y: auto;
+    max-width: 85vw;
+    z-index: 951;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-sidebar { animation: none; }
 }
 
 .cb-menu__btn {
@@ -1041,24 +1087,11 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   width: 34px;
   padding: 0;
   justify-content: center;
+  flex-shrink: 0;
 }
 .cb-menu__btn[aria-expanded="true"] {
   color: var(--text);
   border-color: var(--accent);
-}
-
-.cb-menu__panel {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  right: 0;
-  width: 260px;
-  max-width: calc(100vw - 1.5rem);
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
-  z-index: 20;
-  padding: 0.35rem 0;
 }
 
 .cb-menu__section {
@@ -1085,7 +1118,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   justify-content: flex-start;
   text-align: left;
 }
-.cb-menu__panel .cb-audio-upload .cb-menu__item {
+.cb-sidebar .cb-audio-upload .cb-menu__item {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;

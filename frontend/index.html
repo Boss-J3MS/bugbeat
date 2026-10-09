@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=14" />
+  <link rel="stylesheet" href="style.css?v=15" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -24,6 +24,9 @@
 
   <!-- HEADER -->
   <header class="cb-header">
+    <!-- ☰ shows/hides the settings sidebar on the left (menu.js). -->
+    <button id="menu-btn" class="cb-btn cb-btn--ghost cb-menu__btn" type="button"
+            title="Settings" aria-label="Settings" aria-expanded="true" aria-controls="menu-panel">☰</button>
     <div class="cb-header__logo">
       <img src="bugbeatLogo.png" alt="BugBeat" class="cb-logo-img" />
     </div>
@@ -72,59 +75,6 @@
         </div>
       </div>
 
-      <!-- Menu (☰): sound + account controls. The controls keep their own
-           ids, so app.js, history.js, theme.js and account.js work on them
-           as before. Opening/closing is wired up in menu.js. -->
-      <div class="cb-menu" id="menu-wrap">
-        <button id="menu-btn" class="cb-btn cb-btn--ghost cb-menu__btn" type="button"
-                title="Menu" aria-label="Menu" aria-haspopup="true" aria-expanded="false" aria-controls="menu-panel">☰</button>
-        <div id="menu-panel" class="cb-menu__panel" hidden>
-          <div class="cb-menu__section">
-            <div class="cb-menu__heading">Sound</div>
-            <!-- Style of the generated music (used when no track is loaded). -->
-            <label class="cb-menu__field">
-              <span>Music style</span>
-              <select id="style-select" class="cb-select" aria-label="Music style">
-                <option value="lofi">🌙 Lo-fi Chill</option>
-                <option value="jazz">🎷 Smooth Jazz</option>
-                <option value="rock">🎸 Rock Drive</option>
-                <option value="electronic">🎛️ Electronic Pulse</option>
-                <option value="ambient">🌊 Ambient Calm</option>
-              </select>
-            </label>
-            <div class="cb-audio-upload">
-              <label for="audio-upload" class="cb-btn cb-btn--ghost cb-menu__item" title="Upload an MP3 or WAV as backing track">
-                🎧 <span id="audio-label">Upload audio</span>
-              </label>
-              <input type="file" id="audio-upload" accept="audio/*" hidden />
-              <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
-            </div>
-            <!-- Saved tracks (tracks.js); hidden until the server says saving is on. -->
-            <div id="tracks" class="cb-tracks" hidden>
-              <div class="cb-tracks__head">
-                <span>My tracks</span>
-                <span id="tracks-count" class="cb-tracks__count"></span>
-              </div>
-              <div id="tracks-limits" class="cb-tracks__limits"></div>
-              <div id="tracks-list" class="cb-tracks__list"></div>
-              <div id="tracks-msg" class="cb-tracks__msg" hidden></div>
-            </div>
-          </div>
-
-          <div class="cb-menu__section">
-            <div class="cb-menu__heading">Account</div>
-            <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
-            <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
-            <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
-            <div class="cb-menu__row">
-              <span>Light / dark mode</span>
-              <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
-            </div>
-            <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
-            <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Logout</button>
-          </div>
-        </div>
-      </div>
     </div>
   </header>
 
@@ -133,6 +83,58 @@
     <span class="cb-error-banner__icon">⚠</span>
     <span id="error-banner-msg"></span>
   </div>
+
+  <!-- Settings sidebar (docked left): sound + account controls. The controls
+       keep their own ids, so app.js, history.js, theme.js, tracks.js and
+       account.js work on them as before. Shown/hidden by menu.js. -->
+  <div class="cb-layout">
+  <aside id="menu-panel" class="cb-sidebar" aria-label="Settings">
+    <div class="cb-menu__section">
+      <div class="cb-menu__heading">Sound</div>
+      <!-- Style of the generated music (used when no track is loaded). -->
+      <label class="cb-menu__field">
+        <span>Music style</span>
+        <select id="style-select" class="cb-select" aria-label="Music style">
+          <option value="lofi">🌙 Lo-fi Chill</option>
+          <option value="jazz">🎷 Smooth Jazz</option>
+          <option value="rock">🎸 Rock Drive</option>
+          <option value="electronic">🎛️ Electronic Pulse</option>
+          <option value="ambient">🌊 Ambient Calm</option>
+        </select>
+      </label>
+      <div class="cb-audio-upload">
+        <label for="audio-upload" class="cb-btn cb-btn--ghost cb-menu__item" title="Upload an MP3 or WAV as backing track">
+          🎧 <span id="audio-label">Upload audio</span>
+        </label>
+        <input type="file" id="audio-upload" accept="audio/*" hidden />
+        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
+      </div>
+      <!-- Saved tracks (tracks.js); hidden until the server says saving is on. -->
+      <div id="tracks" class="cb-tracks" hidden>
+        <div class="cb-tracks__head">
+          <span>My tracks</span>
+          <span id="tracks-count" class="cb-tracks__count"></span>
+        </div>
+        <div id="tracks-limits" class="cb-tracks__limits"></div>
+        <div id="tracks-list" class="cb-tracks__list"></div>
+        <div id="tracks-msg" class="cb-tracks__msg" hidden></div>
+      </div>
+    </div>
+
+    <div class="cb-menu__section">
+      <div class="cb-menu__heading">Account</div>
+      <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
+      <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
+      <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
+      <div class="cb-menu__row">
+        <span>Light / dark mode</span>
+        <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+      </div>
+      <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
+      <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Logout</button>
+    </div>
+  </aside>
+  <div id="sidebar-backdrop" class="cb-sidebar__backdrop" hidden></div>
 
   <!-- 2x2 PANEL LAYOUT -->
   <main class="cb-workspace">
@@ -252,6 +254,7 @@
     </section>
 
   </main>
+  </div>
 
   <!-- ═══════════════════════════════════════════
        HISTORY PANEL — slide-over overlay
@@ -502,9 +505,9 @@
   <script src="banner.js"></script>
   <script src="tracks.js?v=2"></script>
   <script src="theme.js"></script>
-  <script src="menu.js?v=2"></script>
+  <script src="menu.js?v=3"></script>
   <script src="account.js"></script>
   <script src="logout.js?v=2"></script>
 
 </body>
-</html>
+</html>

@@ -1,57 +1,69 @@
 // ═══════════════════════════════════════════════
-//  menu.js — the ☰ menu in the main header (index.html)
-//  Opens/closes the menu panel. The controls inside it (demo loader,
-//  Clear, audio upload, History, theme toggle, Admin, Logout) keep their
-//  own ids and behaviour from app.js / history.js / theme.js; this file
-//  only shows and hides the panel.
+//  menu.js — the settings sidebar on the left of the main page (index.html)
+//  The ☰ button in the header shows/hides it. The controls inside it
+//  (music style, audio upload, My tracks, History, Change password,
+//  theme toggle, Admin, Logout) keep their own ids and behaviour from
+//  app.js / tracks.js / history.js / theme.js / account.js / logout.js;
+//  this file only shows and hides the panel.
+//
+//  Wide screens: the sidebar is docked — it sits beside the workspace and
+//  pushes it over. It stays open until ☰ is clicked again, and the choice
+//  is remembered for next time.
+//  Narrow screens (≤ 768px): it slides over the workspace with a dark
+//  backdrop, and closes on a backdrop click, Esc, or after an item is used.
 // ═══════════════════════════════════════════════
 (function () {
-  const wrap  = document.getElementById('menu-wrap');
-  const btn   = document.getElementById('menu-btn');
-  const panel = document.getElementById('menu-panel');
-  if (!wrap || !btn || !panel) return;
+  const btn      = document.getElementById('menu-btn');
+  const panel    = document.getElementById('menu-panel');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  if (!btn || !panel) return;
+
+  const KEY    = 'cb-sidebar';
+  const narrow = window.matchMedia('(max-width: 768px)');
+
+  function savedOpen() {
+    try { return localStorage.getItem(KEY) !== 'closed'; } catch (e) { return true; }
+  }
+  function save(open) {
+    try { localStorage.setItem(KEY, open ? 'open' : 'closed'); } catch (e) {}
+  }
 
   function isOpen() {
     return !panel.hidden;
   }
 
-  function open() {
-    panel.hidden = false;
-    btn.setAttribute('aria-expanded', 'true');
-    if (window.keepInView) keepInView(panel);   // see popover.js
+  function setOpen(open, opts) {
+    opts = opts || {};
+    panel.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    document.body.classList.toggle('cb-sidebar-open', open);
+    if (backdrop) backdrop.hidden = !(open && narrow.matches);
+    if (!narrow.matches && opts.remember) save(open);
+    if (!open && opts.returnFocus) btn.focus();
   }
 
-  function close(returnFocus) {
-    if (!isOpen()) return;
-    panel.hidden = true;
-    btn.setAttribute('aria-expanded', 'false');
-    if (returnFocus) btn.focus();
+  // Starting state: docked open on wide screens (unless it was closed
+  // last time), closed on phones so it doesn't cover the editor.
+  function applyDefault() {
+    setOpen(narrow.matches ? false : savedOpen());
   }
+  applyDefault();
+  narrow.addEventListener('change', applyDefault);
 
   btn.addEventListener('click', () => {
-    if (isOpen()) close(false); else open();
+    setOpen(!isOpen(), { remember: true });
   });
 
-  // Click anywhere outside the menu closes it.
-  document.addEventListener('click', (e) => {
-    if (isOpen() && !wrap.contains(e.target)) close(false);
-  });
+  if (backdrop) backdrop.addEventListener('click', () => setOpen(false));
 
-  // Esc closes it and puts focus back on the ☰ button.
+  // Esc closes the overlay on narrow screens (the docked sidebar stays put).
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isOpen()) close(true);
+    if (e.key === 'Escape' && isOpen() && narrow.matches) setOpen(false, { returnFocus: true });
   });
 
-  // Items marked data-menu-close close the menu after they're used:
-  // buttons when clicked, the demo <select> once a demo is picked.
-  // (Upload audio and the theme toggle leave it open.)
+  // Items marked data-menu-close close the overlay after they're used on
+  // narrow screens. When docked, the sidebar stays open.
   panel.addEventListener('click', (e) => {
-    const item = e.target.closest('button[data-menu-close]');
-    if (item) close(false);
-  });
-  panel.addEventListener('change', (e) => {
-    // (app.js resets the demo select back to "Load demo…" in its own change
-    // handler, which runs first, so don't check the selected value here.)
-    if (e.target.matches('select[data-menu-close]')) close(false);
+    if (narrow.matches && e.target.closest('button[data-menu-close]')) setOpen(false);
   });
 })();
