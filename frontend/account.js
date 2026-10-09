@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════
 //  account.js — "Change password" window (index.html)
-//  Opened from ☰ menu → Account → Change password.
+//  Opened from Settings → Security → Change password (settings.js).
 //  Accounts created with Google sign-in have no password yet; for them
 //  the same window becomes "Set a password" (no current-password field).
 //  Uses BACKEND_URL and cbToken from app.js.

@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=25" />
+  <link rel="stylesheet" href="style.css?v=26" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -140,41 +140,12 @@
       </div>
     </div>
 
-    <!-- Appearance (appearance.js): colour theme, text size, code size. -->
-    <div class="cb-menu__section" id="appearance-section">
-      <div class="cb-menu__heading-row">
-        <div class="cb-menu__heading">Appearance</div>
-        <button id="appearance-reset" class="cb-reset-btn" type="button"
-                data-tip="Back to Dark, 100% text, 13px code" aria-label="Reset appearance to default">↺ Reset</button>
-      </div>
-      <label class="cb-menu__field">
-        <span>Theme</span>
-        <select id="theme-select" class="cb-select" aria-label="Theme"></select>
-      </label>
-      <div class="cb-menu__row">
-        <span id="text-size-label">Text size</span>
-        <div class="cb-stepper" role="group" aria-labelledby="text-size-label">
-          <button id="text-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller text">A−</button>
-          <span id="text-size-value" class="cb-stepper__value" aria-live="polite">100%</span>
-          <button id="text-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger text">A+</button>
-        </div>
-      </div>
-      <div class="cb-menu__row">
-        <span id="code-size-label">Code size</span>
-        <div class="cb-stepper" role="group" aria-labelledby="code-size-label">
-          <button id="code-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller code">−</button>
-          <span id="code-size-value" class="cb-stepper__value" aria-live="polite">13px</span>
-          <button id="code-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger code">+</button>
-        </div>
-      </div>
-    </div>
-
     <div class="cb-menu__section">
       <div class="cb-menu__heading">Account</div>
       <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
       <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
-      <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
-      <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
+      <button id="settings-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>⚙ Settings</button>
+      <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>🛡 Admin</button>
       <button id="tour-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🧭 Take the tour</button>
       <!-- Opens the bug report form (app.js; keeps its old id). -->
       <button id="bugreport-fab" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🐞 Report a bug</button>
@@ -445,6 +416,146 @@
   </div>
 
   <!-- ═══════════════════════════════════════════
+       SETTINGS (settings.js) — opened from ⚙ Settings in the sidebar.
+       Tabs: Profile, Preferences, Security. The Appearance controls keep
+       their ids (appearance.js); "Change password" opens the password
+       window (account.js) on top of this one.
+  ═══════════════════════════════════════════ -->
+  <div id="settings-modal" class="cb-bugreport-modal" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="cb-bugreport-modal__box cb-set">
+      <div class="cb-bugreport-modal__header">
+        <span id="settings-title" class="cb-bugreport-modal__title">⚙ Settings</span>
+        <button type="button" id="settings-close-btn" class="cb-btn cb-btn--ghost" title="Close" aria-label="Close settings">✕</button>
+      </div>
+
+      <div class="cb-set__tabs" role="tablist" aria-label="Settings sections">
+        <button type="button" class="cb-set__tab is-active" role="tab" id="set-tab-profile" aria-controls="set-pane-profile" aria-selected="true" data-pane="profile">Profile</button>
+        <button type="button" class="cb-set__tab" role="tab" id="set-tab-prefs" aria-controls="set-pane-prefs" aria-selected="false" data-pane="prefs" tabindex="-1">Preferences</button>
+        <button type="button" class="cb-set__tab" role="tab" id="set-tab-security" aria-controls="set-pane-security" aria-selected="false" data-pane="security" tabindex="-1">Security</button>
+      </div>
+
+      <div class="cb-set__body">
+        <!-- Profile -->
+        <section id="set-pane-profile" class="cb-set__pane" role="tabpanel" aria-labelledby="set-tab-profile">
+          <div class="cb-set__who">
+            <div id="set-avatar" class="cb-set__avatar" aria-hidden="true">?</div>
+            <div>
+              <div id="set-display-name" class="cb-set__name">—</div>
+              <div id="set-role" class="cb-set__muted">—</div>
+            </div>
+          </div>
+
+          <form id="set-nick-form" class="cb-set__group" novalidate>
+            <label for="set-nickname" class="cb-set__label">Nickname</label>
+            <div class="cb-set__inline">
+              <input type="text" id="set-nickname" class="cb-set__input" maxlength="30" autocomplete="nickname" placeholder="Shown instead of your username" />
+              <button type="submit" id="set-nick-save" class="cb-btn cb-btn--primary">Save</button>
+            </div>
+            <div class="cb-set__hint">Up to 30 characters. Leave it empty to show your username.</div>
+            <div id="set-nick-msg" class="cb-bugreport-modal__msg" hidden></div>
+          </form>
+
+          <dl class="cb-set__facts">
+            <div><dt>Username</dt><dd id="set-username">—</dd></div>
+            <div><dt>Email</dt><dd id="set-email">—</dd></div>
+            <div><dt>Sign-in method</dt><dd id="set-method">—</dd></div>
+            <div><dt>Member since</dt><dd id="set-since">—</dd></div>
+          </dl>
+        </section>
+
+        <!-- Preferences -->
+        <section id="set-pane-prefs" class="cb-set__pane" role="tabpanel" aria-labelledby="set-tab-prefs" hidden>
+          <div class="cb-set__group cb-set__appearance" id="appearance-section">
+            <div class="cb-menu__heading-row">
+              <h3 class="cb-set__title">Appearance</h3>
+              <button id="appearance-reset" class="cb-reset-btn" type="button"
+                      data-tip="Back to Dark, 100% text, 13px code" aria-label="Reset appearance to default">↺ Reset</button>
+            </div>
+            <label class="cb-menu__field">
+              <span>Theme</span>
+              <select id="theme-select" class="cb-select" aria-label="Theme"></select>
+            </label>
+            <div class="cb-menu__row">
+              <span id="text-size-label">Text size</span>
+              <div class="cb-stepper" role="group" aria-labelledby="text-size-label">
+                <button id="text-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller text">A−</button>
+                <span id="text-size-value" class="cb-stepper__value" aria-live="polite">100%</span>
+                <button id="text-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger text">A+</button>
+              </div>
+            </div>
+            <div class="cb-menu__row">
+              <span id="code-size-label">Code size</span>
+              <div class="cb-stepper" role="group" aria-labelledby="code-size-label">
+                <button id="code-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller code">−</button>
+                <span id="code-size-value" class="cb-stepper__value" aria-live="polite">13px</span>
+                <button id="code-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger code">+</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cb-set__group">
+            <h3 class="cb-set__title">Editor</h3>
+            <label class="cb-menu__field">
+              <span>Default language</span>
+              <select id="set-default-lang" class="cb-select" aria-label="Default language">
+                <option value="auto">Auto-detect</option>
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="typescript">TypeScript</option>
+                <option value="java">Java</option>
+                <option value="cpp">C++</option>
+                <option value="rust">Rust</option>
+                <option value="go">Go</option>
+              </select>
+            </label>
+            <div class="cb-set__hint">The language picked when you open BugBeat. Saved on this browser.</div>
+          </div>
+        </section>
+
+        <!-- Security -->
+        <section id="set-pane-security" class="cb-set__pane" role="tabpanel" aria-labelledby="set-tab-security" hidden>
+          <div class="cb-set__group">
+            <h3 class="cb-set__title">Password</h3>
+            <div class="cb-set__row">
+              <span id="set-pw-text" class="cb-set__muted">Change the password you log in with.</span>
+              <button type="button" id="change-pw-btn" class="cb-btn cb-btn--ghost">🔑 Change password</button>
+            </div>
+          </div>
+
+          <div class="cb-set__group">
+            <h3 class="cb-set__title">Devices</h3>
+            <div class="cb-set__row">
+              <span class="cb-set__muted">Signed in on a shared or lost device? Log out everywhere except here.</span>
+              <button type="button" id="set-logout-others" class="cb-btn cb-btn--ghost">Log out other devices</button>
+            </div>
+            <div id="set-devices-msg" class="cb-bugreport-modal__msg" hidden></div>
+          </div>
+
+          <div class="cb-set__group cb-set__danger">
+            <h3 class="cb-set__title">Delete account</h3>
+            <p class="cb-set__muted">Permanently deletes your account, your analysis history, notifications and saved tracks. This can't be undone.</p>
+            <button type="button" id="set-delete-start" class="cb-btn cb-btn--ghost cb-btn--danger">Delete my account…</button>
+
+            <form id="set-delete-form" class="cb-set__delete" hidden novalidate>
+              <label for="set-delete-username" class="cb-set__label">Type your username <strong id="set-delete-name"></strong> to confirm</label>
+              <input type="text" id="set-delete-username" class="cb-set__input" autocomplete="off" spellcheck="false" />
+              <div id="set-delete-pw-wrap">
+                <label for="set-delete-password" class="cb-set__label">Your password</label>
+                <input type="password" id="set-delete-password" class="cb-set__input" autocomplete="current-password" />
+              </div>
+              <div id="set-delete-msg" class="cb-bugreport-modal__msg" hidden></div>
+              <div class="cb-bugreport-modal__actions">
+                <button type="submit" id="set-delete-confirm" class="cb-btn cb-btn--danger-solid" disabled>Delete permanently</button>
+                <button type="button" id="set-delete-cancel" class="cb-btn cb-btn--ghost">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════
        CHANGE PASSWORD — modal (account.js)
        Also used to SET a first password on accounts created with Google.
   ═══════════════════════════════════════════ -->
@@ -554,8 +665,9 @@
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
   <script src="account.js"></script>
+  <script src="settings.js"></script>
   <script src="logout.js?v=2"></script>
-  <script src="tour.js?v=6"></script>
+  <script src="tour.js?v=7"></script>
   <script src="resize.js?v=2"></script>
 
 </body>

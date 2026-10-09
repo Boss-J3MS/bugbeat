@@ -1049,19 +1049,133 @@ app.post('/auth/google', authLimiter, async (req, res) => {
 });
 
 // ── GET /auth/me ───────────────────────────────
+// Also returns the nickname (users.nickname) when that column exists, and
+// whether the account is linked to Google — both shown in Settings.
 app.get('/auth/me', requireAuth, async (req, res) => {
+  const base = 'id, username, email, role, created_at, last_login, ' +
+               '(password_hash IS NOT NULL) AS has_password, (google_id IS NOT NULL) AS has_google';
   try {
-    const [rows] = await db.query(
-      'SELECT id, username, email, role, created_at, last_login, (password_hash IS NOT NULL) AS has_password FROM users WHERE id = ?',
-      [req.user.userId]
-    );
+    let rows;
+    try {
+      [rows] = await db.query(`SELECT ${base}, nickname FROM users WHERE id = ?`, [req.user.userId]);
+    } catch (err) {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      // The nickname column hasn't been added to this database yet.
+      [rows] = await db.query(`SELECT ${base} FROM users WHERE id = ?`, [req.user.userId]);
+    }
     if (rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
     }
-    const user = { ...rows[0], has_password: !!rows[0].has_password };
+    const user = {
+      ...rows[0],
+      has_password: !!rows[0].has_password,
+      has_google: !!rows[0].has_google,
+      nickname: rows[0].nickname ?? null
+    };
     res.json({ user });
   } catch (err) {
+    console.error('/auth/me error:', err.message);
     res.status(500).json({ error: 'Could not fetch user info.' });
+  }
+});
+
+// ── PATCH /auth/profile ────────────────────────
+// Settings → Profile. Currently only the nickname: the name shown in the
+// app instead of the username. Empty clears it.
+const NICKNAME_MAX = 30;
+app.patch('/auth/profile', requireAuth, async (req, res) => {
+  const raw = req.body?.nickname;
+  if (raw !== null && raw !== undefined && typeof raw !== 'string') {
+    return res.status(400).json({ error: 'Invalid nickname.' });
+  }
+  const nickname = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (nickname.length > NICKNAME_MAX) {
+    return res.status(400).json({ error: `Your nickname can be at most ${NICKNAME_MAX} characters.` });
+  }
+  if (/[<>]/.test(nickname)) {
+    return res.status(400).json({ error: 'Your nickname cannot contain < or >.' });
+  }
+  try {
+    await db.query('UPDATE users SET nickname = ? WHERE id = ?', [nickname || null, req.user.userId]);
+    res.json({
+      nickname: nickname || null,
+      message: nickname ? 'Nickname saved.' : 'Nickname removed. Your username will be shown instead.'
+    });
+  } catch (err) {
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      console.error('/auth/profile: users.nickname column is missing — run the migration');
+      return res.status(503).json({ error: 'Nicknames aren\'t available yet. Please try again later.' });
+    }
+    console.error('/auth/profile error:', err.message);
+    res.status(500).json({ error: 'Could not save your profile. Please try again.' });
+  }
+});
+
+// ── POST /auth/logout-others ───────────────────
+// Settings → Security. Signs out every other browser/device; keeps this one.
+app.post('/auth/logout-others', requireAuth, async (req, res) => {
+  try {
+    const token = req.headers['authorization']?.split(' ')[1] || '';
+    const [result] = await db.query(
+      'DELETE FROM sessions WHERE user_id = ? AND token <> ?', [req.user.userId, token]
+    );
+    const n = result.affectedRows || 0;
+    res.json({
+      count: n,
+      message: n
+        ? `Logged out ${n} other device${n === 1 ? '' : 's'}.`
+        : 'You weren\'t logged in anywhere else.'
+    });
+  } catch (err) {
+    console.error('/auth/logout-others error:', err.message);
+    res.status(500).json({ error: 'Could not log out your other devices. Please try again.' });
+  }
+});
+
+// ── DELETE /auth/account ───────────────────────
+// Settings → Security → Delete account. The user types their username to
+// confirm, plus their password if the account has one. Deletes the same
+// way an admin deleting a user does (sessions, saved tracks, then the
+// user; the rest of their data goes with the user row).
+app.delete('/auth/account', requireAuth, authLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  try {
+    const [rows] = await db.query(
+      'SELECT id, username, role, password_hash FROM users WHERE id = ? LIMIT 1', [req.user.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found.' });
+    const user = rows[0];
+
+    if (String(username || '').trim() !== user.username) {
+      return res.status(400).json({ error: 'The username you typed doesn\'t match your account.' });
+    }
+    if (user.password_hash) {
+      // 400, not 401: the frontend treats 401 as "your session is over".
+      if (typeof password !== 'string' || !(await verifyPassword(password, user.password_hash))) {
+        return res.status(400).json({ error: 'Your password is incorrect.' });
+      }
+    }
+    if (user.role === 'admin') {
+      const [[{ admins }]] = await db.query("SELECT COUNT(*) AS admins FROM users WHERE role = 'admin'");
+      if (admins <= 1) {
+        return res.status(400).json({ error: 'You are the only admin. Make someone else an admin before deleting your account.' });
+      }
+    }
+
+    await db.query('DELETE FROM sessions WHERE user_id = ?', [user.id]);
+    const [tracks] = await db.query(
+      'SELECT storage_key FROM audio_uploads WHERE user_id = ? AND storage_key IS NOT NULL', [user.id]
+    );
+    await db.query('DELETE FROM audio_uploads WHERE user_id = ?', [user.id]);
+    await db.query('DELETE FROM users WHERE id = ?', [user.id]);
+    if (storageEnabled && tracks.length) {
+      deleteObjects(tracks.map(t => t.storage_key))
+        .catch(err => console.error('[storage] could not delete a removed account\'s tracks:', err.message));
+    }
+    res.json({ message: 'Your account has been deleted.' });
+  } catch (err) {
+    console.error('/auth/account delete error:', err.code || '', err.message);
+    res.status(500).json({ error: 'Could not delete your account. Please try again.' });
   }
 });
 
