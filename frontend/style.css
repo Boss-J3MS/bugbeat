@@ -145,7 +145,111 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   flex: 1;
 }
 
+/* ── Brand block (sidebar toggle + logo + name) ── */
+.cb-brand-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* Same width as the sidebar (260px) minus the header's left padding,
+     so the header's left edge block lines up with the sidebar below it. */
+  width: calc(260px - 1.25rem);
+  flex-shrink: 0;
+}
+
+/* Icon-only button: no box until hovered. */
+.cb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.cb-icon-btn:hover { background: var(--bg-input); color: var(--text); }
+.cb-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Open sidebar: the icon turns green and its left bar slides in, filled,
+   mirroring the sidebar itself; closing slides it back out. */
+.cb-icon-btn[aria-expanded="true"] { color: var(--accent); }
+.cb-icon-btn__fill {
+  fill: currentColor;
+  stroke: none;
+  opacity: 0.35;
+  transform-box: fill-box;
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.22s ease;
+}
+.cb-icon-btn[aria-expanded="true"] .cb-icon-btn__fill { transform: scaleX(1); }
+
+/* Quick tooltip for icon-only buttons (data-tip="…"). Appears straight
+   away on hover or keyboard focus, below and left-aligned to the button. */
+[data-tip] { position: relative; }
+[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  padding: 0.3rem 0.55rem;
+  border-radius: var(--radius-sm);
+  background: var(--text);
+  color: var(--bg);
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.12s, transform 0.12s;
+  z-index: 60;
+}
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after { opacity: 1; transform: none; }
+@media (hover: none) { [data-tip]::after { display: none; } }
+
+.cb-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+  color: var(--text);
+  border-radius: var(--radius-md);
+  padding: 2px 6px 2px 2px;
+  min-width: 0;
+}
+.cb-brand:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cb-brand__mark {
+  height: 34px;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+.cb-brand:hover .cb-brand__mark { transform: rotate(-6deg) scale(1.06); }
+/* The mark is drawn in light pastel colours; deepen it on the light theme. */
+:root[data-theme="light"] .cb-brand__mark { filter: saturate(1.8) brightness(0.75); }
+.cb-brand__name {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.cb-brand__accent { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-brand__mark, .cb-icon-btn__fill, [data-tip]::after { transition: none; }
+  .cb-brand:hover .cb-brand__mark { transform: none; }
+}
+
 .cb-header__controls {
+  margin-left: auto;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1232,6 +1336,8 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
     gap: 0.5rem;
   }
   .cb-header__tagline { font-size: 1rem; }
+  .cb-brand-bar { width: auto; }
+  .cb-brand__name { font-size: 1rem; }
   .cb-header__controls {
     width: 100%;
     flex-wrap: wrap;
@@ -1675,3 +1781,65 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   100%    { box-shadow: 0 0 0 2px transparent; }
 }
 .cb-notice__msg { line-height: 1.5; }
+
+/* ── Guided tour (tour.js) ───────────────────────
+   A dark overlay with a cut-out "spotlight" around the part being
+   explained, and a card with the explanation and Back / Next buttons. */
+.cb-tour { position: fixed; inset: 0; z-index: 2000; }
+.cb-tour__blocker { position: absolute; inset: 0; }        /* stops clicks on the page */
+.cb-tour--center .cb-tour__blocker { background: rgba(0, 0, 0, 0.6); }
+.cb-tour__spot {
+  position: fixed;
+  border-radius: var(--radius-md);
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 9999px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+.cb-tour__card {
+  position: fixed;
+  width: 320px;
+  max-width: calc(100vw - 24px);
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  padding: 1rem 1rem 0.85rem;
+  transition: top 0.25s ease, left 0.25s ease;
+}
+.cb-tour--center .cb-tour__card {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%);
+  width: 360px;
+}
+.cb-tour__card--in { animation: cb-tour-in 0.2s ease-out; }
+@keyframes cb-tour-in { from { opacity: 0; } to { opacity: 1; } }
+.cb-tour__count {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 0.35rem;
+}
+.cb-tour__title { font-size: 1rem; font-weight: 700; margin: 0 0 0.35rem; }
+.cb-tour__text { font-size: 0.85rem; line-height: 1.5; color: var(--text-muted); margin: 0 0 0.9rem; }
+.cb-tour__actions { display: flex; align-items: center; gap: 0.4rem; }
+.cb-tour__spacer { flex: 1; }
+.cb-tour__skip {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cb-tour__skip:hover { color: var(--text); }
+@media (prefers-reduced-motion: reduce) {
+  .cb-tour__spot, .cb-tour__card { transition: none; }
+  .cb-tour__card--in { animation: none; }
+}

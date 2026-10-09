@@ -36,6 +36,9 @@
     opts = opts || {};
     panel.hidden = !open;
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    const label = open ? 'Hide sidebar' : 'Show sidebar';
+    btn.setAttribute('data-tip', label);      // tooltip (style.css)
+    btn.setAttribute('aria-label', label);
     document.body.classList.toggle('cb-sidebar-open', open);
     if (backdrop) backdrop.hidden = !(open && narrow.matches);
     if (!narrow.matches && opts.remember) save(open);
@@ -66,4 +69,16 @@
   panel.addEventListener('click', (e) => {
     if (narrow.matches && e.target.closest('button[data-menu-close]')) setOpen(false);
   });
+
+  // The BugBeat logo goes back to the top and puts the cursor in the
+  // editor. It deliberately doesn't reload the page, since code typed in
+  // the editor isn't saved anywhere and would be lost.
+  const brand = document.getElementById('brand-link');
+  if (brand) {
+    brand.addEventListener('click', (e) => {
+      e.preventDefault();
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (typeof monacoEditor !== 'undefined' && monacoEditor) monacoEditor.focus();
+    });
+  }
 })();
