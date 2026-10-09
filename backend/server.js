@@ -1357,6 +1357,39 @@ app.post('/auth/reset-password', authLimiter, async (req, res) => {
 // ══════════════════════════════════════════════
 
 // ── POST /history/save ─────────────────────────
+// The issues table's text columns may be shorter than what Gemini writes
+// (e.g. VARCHAR(255) for description/suggestion). Inserting a longer value
+// fails with "Data too long", which used to lose every issue of that
+// analysis. Read the real column sizes once and cut values to fit.
+let issueColumnLimits = null;
+async function getIssueColumnLimits() {
+  if (issueColumnLimits) return issueColumnLimits;
+  const limits = {};
+  try {
+    const [cols] = await db.query(
+      `SELECT COLUMN_NAME AS name, CHARACTER_MAXIMUM_LENGTH AS len
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'issues'`
+    );
+    for (const c of cols) {
+      // TEXT columns report 65535 *bytes*; up to 4 bytes per character in
+      // utf8mb4, so stay well under that.
+      const len = Number(c.len) || 0;
+      limits[c.name] = len >= 65535 ? 10000 : len;
+    }
+  } catch (err) {
+    console.warn('[history] could not read issues column sizes:', err.message);
+  }
+  issueColumnLimits = limits;
+  return limits;
+}
+
+function fitText(value, max) {
+  const text = String(value ?? '');
+  if (!max || text.length <= max) return text;
+  return max > 1 ? text.slice(0, max - 1) + '…' : text.slice(0, max);
+}
+
 app.post('/history/save', requireAuth, async (req, res) => {
   const {
     code_snippet, language = 'auto', total_lines = 0,
@@ -1375,9 +1408,17 @@ app.post('/history/save', requireAuth, async (req, res) => {
     ? String(risk_level).toLowerCase()
     : 'low';
 
+  // Everything below is saved as one unit (a transaction): if any step
+  // fails, nothing is kept. Before, a failure while saving the issues left
+  // the summary behind with an empty issue list ("No issues recorded").
+  let conn;
   try {
+    const limits = await getIssueColumnLimits();
+    conn = await db.getConnection();
+    await conn.beginTransaction();
+
     // Step 1: Save to ANALYSES
-    const [result] = await db.query(
+    const [result] = await conn.query(
       `INSERT INTO analyses
        (user_id, language, total_lines, issues_found,
         clean_count, warning_count, error_count, critical_count,
@@ -1394,48 +1435,52 @@ app.post('/history/save', requireAuth, async (req, res) => {
 
     // Step 2: Save to CODE_SNAPSHOTS
     if (code_snippet) {
-      await db.query(
+      await conn.query(
         `INSERT INTO code_snapshots (analysis_id, submitted_code, language, total_lines)
          VALUES (?, ?, ?, ?)`,
         [analysisId, code_snippet, language, total_lines]
       );
     }
 
-    // Step 3: Save to ISSUES
-    if (issues.length > 0) {
-      const kept = issues.filter(i => i.severity !== 'clean');
+    // Step 3: Save to ISSUES (text cut to fit the columns, see above)
+    const kept = issues.filter(i => i && i.severity !== 'clean');
+    if (kept.length > 0) {
+      const cap = (name) => Math.min(limits[name] || 1000, 1000);
       const base = i => [
         analysisId,
-        i.line_number ?? i.line,
+        Number(i.line_number ?? i.line) || 0,
         i.severity,
-        String(i.message || i.description || '').slice(0, 1000),
-        String(i.code_snippet || '').slice(0, 1000)
+        fitText(i.message || i.description, cap('description')),
+        fitText(i.code_snippet, cap('code_snippet'))
       ];
+      const optional = (value, name) => fitText(value, cap(name)) || null;
 
-      if (kept.length > 0) {
+      if ('suggestion' in limits || 'fix_code' in limits || !Object.keys(limits).length) {
         try {
           // With the fix suggestion and corrected line (issues.suggestion
           // and issues.fix_code columns).
-          await db.query(
+          await conn.query(
             `INSERT INTO issues
               (analysis_id, line_number, severity, description, code_snippet, suggestion, fix_code)
              VALUES ?`,
             [kept.map(i => [...base(i),
-              String(i.suggestion || '').slice(0, 1000) || null,
-              String(i.fix || i.fix_code || '').slice(0, 1000) || null])]
+              optional(i.suggestion, 'suggestion'),
+              optional(i.fix || i.fix_code, 'fix_code')])]
           );
         } catch (err) {
           if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
-          // Those columns haven't been added to this database yet: save
-          // the issues without them instead of failing the whole save.
           console.warn('[history] issues.suggestion/fix_code columns missing — saving without fix suggestions');
-          await db.query(
-            `INSERT INTO issues
-              (analysis_id, line_number, severity, description, code_snippet)
-             VALUES ?`,
+          await conn.query(
+            `INSERT INTO issues (analysis_id, line_number, severity, description, code_snippet) VALUES ?`,
             [kept.map(base)]
           );
         }
+      } else {
+        // Those columns haven't been added to this database yet.
+        await conn.query(
+          `INSERT INTO issues (analysis_id, line_number, severity, description, code_snippet) VALUES ?`,
+          [kept.map(base)]
+        );
       }
     }
 
@@ -1448,7 +1493,7 @@ app.post('/history/save', requireAuth, async (req, res) => {
         cell.beat_position !== undefined ? cell.beat_position : index
       ]);
 
-      await db.query(
+      await conn.query(
         `INSERT INTO beat_grid
           (analysis_id, line_number, severity, beat_position)
          VALUES ?`,
@@ -1457,7 +1502,7 @@ app.post('/history/save', requireAuth, async (req, res) => {
     }
 
     // Step 5: Save notification
-    await db.query(
+    await conn.query(
       `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
       [
         req.user.userId,
@@ -1466,6 +1511,8 @@ app.post('/history/save', requireAuth, async (req, res) => {
       ]
     );
 
+    await conn.commit();
+
     res.json({
       success     : true,
       analysis_id : analysisId,
@@ -1473,8 +1520,13 @@ app.post('/history/save', requireAuth, async (req, res) => {
     });
 
   } catch (err) {
-    console.error('/history/save error:', err.message);
+    if (conn) { try { await conn.rollback(); } catch (e) { /* already failed */ } }
+    // Log the database's own error code too, so the Render log says
+    // exactly which column/value was refused.
+    console.error('/history/save error:', err.code || '', err.sqlMessage || err.message);
     res.status(500).json({ error: 'Could not save analysis.' });
+  } finally {
+    if (conn) conn.release();
   }
 });
 
