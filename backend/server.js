@@ -1055,13 +1055,15 @@ app.get('/auth/me', requireAuth, async (req, res) => {
   const base = 'id, username, email, role, created_at, last_login, ' +
                '(password_hash IS NOT NULL) AS has_password, (google_id IS NOT NULL) AS has_google';
   try {
+    // Newest columns first; older databases may not have them yet.
     let rows;
-    try {
-      [rows] = await db.query(`SELECT ${base}, nickname FROM users WHERE id = ?`, [req.user.userId]);
-    } catch (err) {
-      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
-      // The nickname column hasn't been added to this database yet.
-      [rows] = await db.query(`SELECT ${base} FROM users WHERE id = ?`, [req.user.userId]);
+    for (const extra of [', nickname, nickname_changed_at', ', nickname', '']) {
+      try {
+        [rows] = await db.query(`SELECT ${base}${extra} FROM users WHERE id = ?`, [req.user.userId]);
+        break;
+      } catch (err) {
+        if (err.code !== 'ER_BAD_FIELD_ERROR' || extra === '') throw err;
+      }
     }
     if (rows.length === 0) {
       return res.status(404).json({ error: 'User not found.' });
@@ -1070,8 +1072,11 @@ app.get('/auth/me', requireAuth, async (req, res) => {
       ...rows[0],
       has_password: !!rows[0].has_password,
       has_google: !!rows[0].has_google,
-      nickname: rows[0].nickname ?? null
+      nickname: rows[0].nickname ?? null,
+      // When the nickname can be changed again (null = now). See NICKNAME_COOLDOWN_DAYS.
+      nickname_next_change_at: nextNicknameChange(rows[0].nickname_changed_at)
     };
+    delete user.nickname_changed_at;
     res.json({ user });
   } catch (err) {
     console.error('/auth/me error:', err.message);
@@ -1081,8 +1086,19 @@ app.get('/auth/me', requireAuth, async (req, res) => {
 
 // ── PATCH /auth/profile ────────────────────────
 // Settings → Profile. Currently only the nickname: the name shown in the
-// app instead of the username. Empty clears it.
+// app instead of the username. Empty clears it. It can be changed once
+// every NICKNAME_COOLDOWN_DAYS (users.nickname_changed_at); setting one
+// for the first time is always allowed, and saving the same name again
+// doesn't count as a change.
 const NICKNAME_MAX = 30;
+const NICKNAME_COOLDOWN_DAYS = 7;
+
+function nextNicknameChange(changedAt) {
+  if (!changedAt) return null;
+  const next = new Date(new Date(changedAt).getTime() + NICKNAME_COOLDOWN_DAYS * 24 * 60 * 60 * 1000);
+  return next > new Date() ? next.toISOString() : null;
+}
+
 app.patch('/auth/profile', requireAuth, async (req, res) => {
   const raw = req.body?.nickname;
   if (raw !== null && raw !== undefined && typeof raw !== 'string') {
@@ -1096,14 +1112,44 @@ app.patch('/auth/profile', requireAuth, async (req, res) => {
     return res.status(400).json({ error: 'Your nickname cannot contain < or >.' });
   }
   try {
-    await db.query('UPDATE users SET nickname = ? WHERE id = ?', [nickname || null, req.user.userId]);
+    const [rows] = await db.query(
+      'SELECT nickname, nickname_changed_at FROM users WHERE id = ? LIMIT 1', [req.user.userId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found.' });
+    const current = rows[0];
+
+    if ((current.nickname || '') === nickname) {
+      return res.json({
+        nickname: nickname || null,
+        nickname_next_change_at: nextNicknameChange(current.nickname_changed_at),
+        message: 'That\'s already your nickname.'
+      });
+    }
+
+    const next = nextNicknameChange(current.nickname_changed_at);
+    if (next) {
+      const when = new Date(next).toLocaleString('en-PH', {
+        timeZone: 'Asia/Manila', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit'
+      });
+      // 400, not 429: the frontend treats some statuses specially.
+      return res.status(400).json({
+        error: `You can change your nickname once a week. You can change it again on ${when}.`,
+        nickname_next_change_at: next
+      });
+    }
+
+    await db.query(
+      'UPDATE users SET nickname = ?, nickname_changed_at = NOW() WHERE id = ?',
+      [nickname || null, req.user.userId]
+    );
     res.json({
       nickname: nickname || null,
+      nickname_next_change_at: nextNicknameChange(new Date()),
       message: nickname ? 'Nickname saved.' : 'Nickname removed. Your username will be shown instead.'
     });
   } catch (err) {
     if (err.code === 'ER_BAD_FIELD_ERROR') {
-      console.error('/auth/profile: users.nickname column is missing — run the migration');
+      console.error('/auth/profile: users.nickname / nickname_changed_at column is missing — run the migration');
       return res.status(503).json({ error: 'Nicknames aren\'t available yet. Please try again later.' });
     }
     console.error('/auth/profile error:', err.message);

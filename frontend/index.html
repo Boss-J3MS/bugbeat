@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=26" />
+  <link rel="stylesheet" href="style.css?v=27" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -451,7 +451,7 @@
               <input type="text" id="set-nickname" class="cb-set__input" maxlength="30" autocomplete="nickname" placeholder="Shown instead of your username" />
               <button type="submit" id="set-nick-save" class="cb-btn cb-btn--primary">Save</button>
             </div>
-            <div class="cb-set__hint">Up to 30 characters. Leave it empty to show your username.</div>
+            <div id="set-nick-hint" class="cb-set__hint">Up to 30 characters, changeable once a week. Leave it empty to show your username.</div>
             <div id="set-nick-msg" class="cb-bugreport-modal__msg" hidden></div>
           </form>
 
@@ -665,7 +665,7 @@
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
   <script src="account.js"></script>
-  <script src="settings.js"></script>
+  <script src="settings.js?v=2"></script>
   <script src="logout.js?v=2"></script>
   <script src="tour.js?v=7"></script>
   <script src="resize.js?v=2"></script>

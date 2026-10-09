@@ -1,7 +1,7 @@
 // ═══════════════════════════════════════════════
 //  settings.js — the Settings window (index.html)
 //  Opened from ⚙ Settings in the sidebar. Three tabs:
-//    • Profile:     nickname (saved to the account), username, email,
+//    • Profile:     nickname (saved to the account, once a week), username, email,
 //                   sign-in method, member since.
 //    • Preferences: Appearance (theme / text size / code size — wired up
 //                   by appearance.js) and the default code language.
@@ -85,6 +85,7 @@
     $('set-display-name').textContent = displayName(u) || '—';
     $('set-role').textContent = u.role === 'admin' ? 'Admin' : 'Member';
     $('set-nickname').value = u.nickname || '';
+    showNickLock(u.nickname_next_change_at);
     $('set-username').textContent = u.username || '—';
     $('set-email').textContent = u.email || '—';
     $('set-method').textContent =
@@ -98,6 +99,18 @@
     $('change-pw-btn').textContent = u.has_password ? '🔑 Change password' : '🔑 Set a password';
     $('set-delete-name').textContent = u.username || '';
     $('set-delete-pw-wrap').hidden = !u.has_password;
+  }
+
+  // Nickname can be changed once a week (the backend enforces it; this
+  // just shows it). nextAt = when it can be changed again, or null.
+  function showNickLock(nextAt) {
+    const next = nextAt ? new Date(nextAt) : null;
+    const locked = !!(next && next > new Date());
+    $('set-nickname').disabled = locked;
+    $('set-nick-save').disabled = locked;
+    $('set-nick-hint').textContent = locked
+      ? `You can change your nickname once a week. Next change: ${next.toLocaleString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}.`
+      : 'Up to 30 characters, changeable once a week. Leave it empty to show your username.';
   }
 
   // ── Tabs ───────────────────────────────────────
@@ -168,8 +181,14 @@
         method: 'PATCH', headers: authHeaders(true), body: JSON.stringify({ nickname })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Could not save your nickname.');
-      me = { ...(me || cbUser || {}), nickname: data.nickname };
+      if (!res.ok) {
+        if (data.nickname_next_change_at) {
+          me = { ...(me || cbUser || {}), nickname_next_change_at: data.nickname_next_change_at };
+          fillProfile(me);
+        }
+        throw new Error(data.error || 'Could not save your nickname.');
+      }
+      me = { ...(me || cbUser || {}), nickname: data.nickname, nickname_next_change_at: data.nickname_next_change_at };
       fillProfile(me);
       updateGreeting(me);
       cacheUser(me);
@@ -177,7 +196,7 @@
     } catch (err) {
       showMsg(msg, niceError(err, 'Could not save your nickname.'), 'error');
     } finally {
-      btn.disabled = false;
+      showNickLock(me && me.nickname_next_change_at);
     }
   });
 

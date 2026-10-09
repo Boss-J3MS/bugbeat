@@ -2080,6 +2080,7 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
   font-size: 0.85rem;
 }
 .cb-set__input:focus { outline: none; border-color: var(--accent); }
+.cb-set__input:disabled { opacity: 0.6; cursor: not-allowed; }
 .cb-set__inline { display: flex; gap: 0.5rem; align-items: center; }
 .cb-set__inline .cb-btn { height: 2.1rem; flex-shrink: 0; }
 .cb-set__row {
