@@ -55,6 +55,10 @@
   applyDefault();
   narrow.addEventListener('change', applyDefault);
 
+  // Used by the guided tour (tour.js) to open the sidebar for its
+  // sidebar steps without changing the user's saved preference.
+  window.cbSidebar = { isOpen, setOpen: (open) => setOpen(open) };
+
   btn.addEventListener('click', () => {
     setOpen(!isOpen(), { remember: true });
   });

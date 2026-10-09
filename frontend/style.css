@@ -1995,3 +1995,6 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
   cursor: pointer;
 }
 .cb-menu__link:hover { color: var(--text); }
+
+/* Tour step "Resize the panels": show the resize lines. */
+.cb-tour-show-gutters .cb-gutter::after { opacity: 1; }

@@ -8,47 +8,82 @@
 // ═══════════════════════════════════════════════
 (function () {
   // Each step points at an element (target) — or none, for a centred
-  // card. Steps whose element is hidden right now (e.g. the sidebar
-  // items on a phone) are skipped automatically.
+  // card. Steps marked `sidebar: true` open the sidebar while they are
+  // shown (it goes back to how it was afterwards). Steps whose element
+  // isn't on screen right now (e.g. the resize handles on a phone, or
+  // Admin for normal users) are skipped automatically.
   const STEPS = [
-    { title: 'Welcome to BugBeat',
-      text: 'BugBeat turns problems in your code into music, so you can hear bugs as well as see them. This short tour shows you around.' },
+    // ── Getting started ──
+    { title: 'Welcome to BugBeat 🐞🎵',
+      text: 'BugBeat turns problems in your code into music, so you can hear bugs as well as see them. This tour takes about a minute. Use the arrow keys or the buttons to move around.' },
+    { target: '#brand-link', title: 'Home',
+      text: 'Click the BugBeat logo any time for a fresh start. It refreshes the page and clears the editor, so finish or copy your code first.' },
+
+    // ── Checking code ──
     { target: '.cb-panel--editor', title: 'Write or paste code',
-      text: 'Type or paste the code you want to check here.' },
+      text: 'Type or paste the code you want to check here. The line count is shown at the top right.' },
     { target: '#lang-select', title: 'Pick the language',
-      text: 'Choose the language of your code, or leave it on Auto-detect.' },
+      text: 'Choose your code\'s language so BugBeat checks it strictly as that language, or leave it on Auto-detect.' },
     { target: '#demo-select', title: 'No code yet? Try a demo',
-      text: 'Load a sample with clean code, minor warnings, logic errors or critical issues.' },
+      text: 'Load a sample with clean code, minor warnings, logic errors, critical issues, or a mix of everything.' },
     { target: '#analyze-btn', title: 'Analyze',
-      text: 'Checks your code for errors and turns the results into a rhythm.' },
-    { target: '.cb-panel--issues', title: 'See what is wrong',
-      text: 'Each issue shows its line, how serious it is, and a suggested fix.' },
-    { target: '.cb-panel--sequencer', title: 'See the rhythm',
-      text: 'Every line of code becomes a beat. Clean lines sound smooth; warnings, errors and critical issues add more and more distortion.' },
-    { target: '.cb-panel--playback', title: 'Listen',
-      text: 'Play the rhythm and change its speed with BPM. The counters show how many issues of each kind were found.' },
-    { target: '#style-select', title: 'Choose the music',
-      text: 'Pick a music style, or use Upload audio beside it to play your own MP3 or WAV instead.' },
+      text: 'Checks your code for errors and turns the results into a rhythm you can see and hear. Each analysis is saved to your History.' },
     { target: '#run-btn', title: 'Run your code',
-      text: 'Runs the code and shows its output below the panels. Pick a language first — Auto-detect and TypeScript can\'t be run.' },
+      text: 'Runs the code and shows its output in a panel below. Pick a language first, since Auto-detect and TypeScript can\'t be run.' },
+    { target: '#clear-btn', title: 'Clear',
+      text: 'Empties the editor and removes the highlights so you can start over.' },
+
+    // ── Results ──
+    { target: '.cb-panel--issues', title: 'Issues and how to fix them',
+      text: 'Each issue shows its line, how serious it is, what\'s wrong and how to fix it. Press Copy to copy the corrected line.' },
+    { target: '.cb-panel--sequencer', title: 'The rhythm of your code',
+      text: 'Every line of code becomes a bar: green is clean, then yellow, orange and red for warnings, errors and critical issues. Point at a bar to see its line.' },
+    { target: '.cb-panel--playback', title: 'Listen',
+      text: 'Press play to hear your code. Problems add more and more distortion to the music. Change the speed with BPM, and see how many issues of each kind were found.' },
+
+    // ── Music ──
+    { target: '#style-select', title: 'Choose the music',
+      text: 'Pick the style of the generated music: Lo-fi, Jazz, Rock, Electronic or Ambient.' },
+    { target: '.cb-audio-upload', title: 'Use your own song',
+      text: 'Upload an MP3 or WAV to hear your code through your own music. Press ✕ beside it to go back to the generated music.' },
+
+    // ── Layout ──
+    { target: '.cb-gutter--both', bodyClass: 'cb-tour-show-gutters', title: 'Resize the panels',
+      text: 'Drag the borders between the panels, or this point where they meet, to make any panel bigger. Double-click a border to go back to the default layout.' },
     { target: '#notif-btn', title: 'Notifications',
-      text: 'Updates and announcements from the BugBeat team appear here.' },
+      text: 'Finished analyses and announcements from the BugBeat team show up here.' },
+
+    // ── Sidebar ──
     { target: '#menu-btn', title: 'Your sidebar',
-      text: 'This button shows or hides the sidebar, where you\'ll find History, the theme, text and code size settings, and Logout.' },
+      text: 'This button shows or hides the sidebar with your settings and account. Let\'s look inside.' },
+    { target: '#appearance-section', sidebar: true, title: 'Appearance',
+      text: 'Pick a theme (Dark, Light, Midnight, Violet, Ember, Paper or High contrast), and make the text or the code bigger or smaller. Reset to default undoes it all.' },
+    { target: '#history-btn', sidebar: true, title: 'History',
+      text: 'See your past analyses with their issues and code, search and filter them, and restore one back into the editor.' },
+    { target: '#change-pw-btn', sidebar: true, title: 'Your account',
+      text: 'Change your password here, or set one if you signed in with Google.' },
+    { target: '#admin-link', sidebar: true, title: 'Admin',
+      text: 'Manage users, bug reports, invites and announcements.' },
+    { target: '#tour-btn', sidebar: true, title: 'Replay this tour',
+      text: 'Come back here any time to take this tour again.' },
+
+    // ── Help ──
     { target: '#bugreport-fab', title: 'Found a problem in BugBeat?',
       text: 'Tell us here and the team will look into it.' },
-    { title: 'You\'re all set',
-      text: 'Try loading a demo and pressing Analyze to hear it. You can replay this tour any time from "Take the tour" in the sidebar.' }
+    { title: 'You\'re all set!',
+      text: 'Try it now: load a demo, press Analyze, then press play to hear your code.' }
   ];
 
   const user = (() => {
     try { return JSON.parse(localStorage.getItem('cb_user') || 'null'); } catch (e) { return null; }
   })();
   if (!user) return;                                  // app.js sends them to login
-  const DONE_KEY = 'cb-tour-done:' + (user.username || user.id || 'user');
+  // "v2": the tour was rewritten, so everyone sees the new one once.
+  const DONE_KEY = 'cb-tour-done-v2:' + (user.username || user.id || 'user');
 
   let root, spot, card, titleEl, textEl, countEl, backBtn, nextBtn;
   let index = 0;
+  let sidebarWasOpen = false;
   let steps = [];
   let lastFocus = null;
 
@@ -146,6 +181,10 @@
     if (i >= steps.length) { end(); return; }
     index = i;
     const step = steps[index];
+    if (window.cbSidebar) window.cbSidebar.setOpen(step.sidebar ? true : sidebarWasOpen);
+    // Some steps light up extra parts of the page (e.g. the resize lines).
+    document.body.classList.remove('cb-tour-show-gutters');
+    if (step.bodyClass) document.body.classList.add(step.bodyClass);
     const el = step.target ? document.querySelector(step.target) : null;
     if (el) el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 
@@ -161,6 +200,9 @@
     card.classList.add('cb-tour__card--in');
 
     place();
+    // Opening/closing the sidebar moves things; measure again once it has.
+    requestAnimationFrame(() => requestAnimationFrame(place));
+    setTimeout(place, 250);
     nextBtn.focus();
   }
 
@@ -168,7 +210,15 @@
     if (root && !root.hidden) return;
     // Close any open notification list etc. so it doesn't sit on top.
     document.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    steps = STEPS.filter(s => !s.target || isShown(document.querySelector(s.target)));
+    steps = STEPS.filter(s => {
+      if (!s.target) return true;
+      const el = document.querySelector(s.target);
+      // Sidebar items are hidden until the sidebar opens, so only check
+      // the item itself (e.g. Admin stays hidden for normal users).
+      if (s.sidebar) return !!el && !el.hidden && !!window.cbSidebar;
+      return isShown(el);
+    });
+    sidebarWasOpen = window.cbSidebar ? window.cbSidebar.isOpen() : false;
     if (!root) build();
     lastFocus = document.activeElement;
     root.hidden = false;
@@ -184,6 +234,8 @@
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', place);
     window.removeEventListener('scroll', place, true);
+    document.body.classList.remove('cb-tour-show-gutters');
+    if (window.cbSidebar) window.cbSidebar.setOpen(sidebarWasOpen);
     try { localStorage.setItem(DONE_KEY, '1'); } catch (e) {}
     if (lastFocus && lastFocus.focus) lastFocus.focus();
   }
