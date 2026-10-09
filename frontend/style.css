@@ -321,9 +321,10 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 .cb-workspace {
   display: grid;
   /* --split-cols / --split-rows are set by resize.js when the panels are
-     dragged to a new size; equal halves otherwise. */
-  grid-template-columns: var(--split-cols, minmax(0, 1fr) minmax(0, 1fr));
-  grid-template-rows: var(--split-rows, minmax(0, 1fr) minmax(0, 1fr));
+     dragged to a new size; otherwise the default 70/30 and 62/38 split
+     (the same default as resize.js). */
+  grid-template-columns: var(--split-cols, minmax(0, 0.7fr) minmax(0, 0.3fr));
+  grid-template-rows: var(--split-rows, minmax(0, 0.62fr) minmax(0, 0.38fr));
   position: relative;          /* the resize handles are placed inside it */
   flex: 1;
   /* No overflow:hidden here on purpose. body is a column flex layout with

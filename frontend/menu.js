@@ -7,8 +7,8 @@
 //  this file only shows and hides the panel.
 //
 //  Wide screens: the sidebar is docked — it sits beside the workspace and
-//  pushes it over. It stays open until ☰ is clicked again, and the choice
-//  is remembered for next time.
+//  pushes it over. It starts closed; once opened it stays open until the
+//  button is clicked again, and the choice is remembered for next time.
 //  Narrow screens (≤ 768px): it slides over the workspace with a dark
 //  backdrop, and closes on a backdrop click, Esc, or after an item is used.
 // ═══════════════════════════════════════════════
@@ -22,7 +22,8 @@
   const narrow = window.matchMedia('(max-width: 768px)');
 
   function savedOpen() {
-    try { return localStorage.getItem(KEY) !== 'closed'; } catch (e) { return true; }
+    // Closed by default; open only if the user left it open last time.
+    try { return localStorage.getItem(KEY) === 'open'; } catch (e) { return false; }
   }
   function save(open) {
     try { localStorage.setItem(KEY, open ? 'open' : 'closed'); } catch (e) {}
@@ -45,8 +46,9 @@
     if (!open && opts.returnFocus) btn.focus();
   }
 
-  // Starting state: docked open on wide screens (unless it was closed
-  // last time), closed on phones so it doesn't cover the editor.
+  // Starting state: closed, so the panels get the full width. On wide
+  // screens it reopens if the user left it open last time; on phones it
+  // always starts closed so it doesn't cover the editor.
   function applyDefault() {
     setOpen(narrow.matches ? false : savedOpen());
   }

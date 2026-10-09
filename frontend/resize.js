@@ -4,7 +4,7 @@
 //    • a vertical bar between the left and right panels,
 //    • a horizontal bar between the top and bottom panels,
 //    • a small square where they cross, which moves both at once.
-//  Double-click a handle to go back to equal sizes. The handles can also
+//  Double-click a handle to go back to the default sizes. The handles can also
 //  be focused with Tab and moved with the arrow keys. Sizes are remembered
 //  in this browser. On narrow screens (panels stacked) the handles hide.
 // ═══════════════════════════════════════════════
@@ -20,7 +20,10 @@
   const STEP   = 0.02;     // arrow-key step
   const narrow = window.matchMedia('(max-width: 768px)');
 
-  let split = { x: 0.5, y: 0.5 };
+  // Default layout: a wide editor column on the left and taller top
+  // panels (Code / Issues), with Rhythm / Playback below.
+  const DEFAULT = { x: 0.7, y: 0.62 };
+  let split = { ...DEFAULT };
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) || 'null');
     if (saved && isFinite(saved.x) && isFinite(saved.y)) split = saved;
@@ -102,8 +105,8 @@
   }
 
   function reset(axes) {
-    if (axes !== 'y') split.x = 0.5;
-    if (axes !== 'x') split.y = 0.5;
+    if (axes !== 'y') split.x = DEFAULT.x;
+    if (axes !== 'x') split.y = DEFAULT.y;
     apply();
     save();
   }
