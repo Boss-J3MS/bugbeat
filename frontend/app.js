@@ -818,7 +818,7 @@ function updateNowPlaying() {
 // ── Notice pop-up ──────────────────────────────
 // A simple message box (title, text, OK, and an optional extra button).
 // Built once on first use; shared with tracks.js.
-function showNotice({ title, message, actionLabel, onAction }) {
+function showNotice({ title, message, actionLabel, onAction, cancelLabel }) {
   let modal = document.getElementById('notice-modal');
   if (!modal) {
     modal = document.createElement('div');
@@ -865,6 +865,7 @@ function showNotice({ title, message, actionLabel, onAction }) {
     action.hidden = true;
     action.onclick = null;
   }
+  modal.querySelector('#notice-ok').textContent = cancelLabel || 'OK';
   modal.hidden = false;
   modal.querySelector('#notice-ok').focus();
 }

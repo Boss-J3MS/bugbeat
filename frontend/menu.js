@@ -70,15 +70,26 @@
     if (narrow.matches && e.target.closest('button[data-menu-close]')) setOpen(false);
   });
 
-  // The BugBeat logo goes back to the top and puts the cursor in the
-  // editor. It deliberately doesn't reload the page, since code typed in
-  // the editor isn't saved anywhere and would be lost.
+  // The BugBeat logo works as a Home button: it reloads the page for a
+  // fresh start (empty editor, no results). Code in the editor isn't saved
+  // anywhere, so if there is any, ask first instead of losing it.
   const brand = document.getElementById('brand-link');
   if (brand) {
     brand.addEventListener('click', (e) => {
       e.preventDefault();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      if (typeof monacoEditor !== 'undefined' && monacoEditor) monacoEditor.focus();
+      const goHome = () => window.location.reload();
+      const hasCode = typeof getCode === 'function' && getCode().trim() !== '';
+      if (hasCode && typeof showNotice === 'function') {
+        showNotice({
+          title: 'Start fresh?',
+          message: 'This clears the code in the editor and its results. Your past analyses stay in History.',
+          actionLabel: 'Start fresh',
+          onAction: goHome,
+          cancelLabel: 'Cancel'
+        });
+      } else {
+        goHome();
+      }
     });
   }
 })();

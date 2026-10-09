@@ -37,9 +37,9 @@
           <rect class="cb-icon-btn__fill" x="3" y="4" width="6" height="16" rx="2.5" />
         </svg>
       </button>
-      <!-- Logo: scrolls back to the top and puts the cursor in the editor.
-           It doesn't reload the page, so code in the editor is never lost. -->
-      <a href="#" id="brand-link" class="cb-brand" title="BugBeat" aria-label="BugBeat, go to editor">
+      <!-- Logo = Home: reloads the page for a fresh start (menu.js asks
+           first if there is code in the editor). -->
+      <a href="index.html" id="brand-link" class="cb-brand" data-tip="Home" aria-label="BugBeat home">
         <img src="bugbeatMark.png" alt="" class="cb-brand__mark" width="54" height="34" />
         <span class="cb-brand__name">Bug<span class="cb-brand__accent">Beat</span></span>
       </a>
@@ -510,13 +510,13 @@
   </script>
 
   <script src="popover.js?v=2"></script>
-  <script src="app.js?v=14"></script>
+  <script src="app.js?v=15"></script>
   <script src="history.js?v=5"></script>
   <script src="notif-view.js?v=3"></script>
   <script src="banner.js"></script>
   <script src="tracks.js?v=2"></script>
   <script src="theme.js"></script>
-  <script src="menu.js?v=5"></script>
+  <script src="menu.js?v=6"></script>
   <script src="account.js"></script>
   <script src="logout.js?v=2"></script>
   <script src="tour.js"></script>
