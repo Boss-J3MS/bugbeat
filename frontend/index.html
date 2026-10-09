@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=23" />
+  <link rel="stylesheet" href="style.css?v=24" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -142,7 +142,11 @@
 
     <!-- Appearance (appearance.js): colour theme, text size, code size. -->
     <div class="cb-menu__section" id="appearance-section">
-      <div class="cb-menu__heading">Appearance</div>
+      <div class="cb-menu__heading-row">
+        <div class="cb-menu__heading">Appearance</div>
+        <button id="appearance-reset" class="cb-reset-btn" type="button"
+                data-tip="Back to Dark, 100% text, 13px code" aria-label="Reset appearance to default">↺ Reset</button>
+      </div>
       <label class="cb-menu__field">
         <span>Theme</span>
         <select id="theme-select" class="cb-select" aria-label="Theme"></select>
@@ -163,7 +167,6 @@
           <button id="code-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger code">+</button>
         </div>
       </div>
-      <button id="appearance-reset" class="cb-btn cb-btn--ghost cb-menu__item" type="button">↺ Reset to default</button>
     </div>
 
     <div class="cb-menu__section">
@@ -551,7 +554,7 @@
   <script src="menu.js?v=9"></script>
   <script src="account.js"></script>
   <script src="logout.js?v=2"></script>
-  <script src="tour.js?v=4"></script>
+  <script src="tour.js?v=5"></script>
   <script src="resize.js?v=2"></script>
 
 </body>

@@ -1985,3 +1985,35 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 
 /* Tour step "Resize the panels": show the resize lines. */
 .cb-tour-show-gutters .cb-gutter::after { opacity: 1; }
+
+/* Section heading with a small action on the right (Appearance → Reset). */
+.cb-menu__heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.cb-reset-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.4rem;
+  padding: 0 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.cb-reset-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.cb-reset-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Its tooltip opens to the left, so it stays inside the sidebar. */
+.cb-reset-btn[data-tip]::after { left: auto; right: 0; }

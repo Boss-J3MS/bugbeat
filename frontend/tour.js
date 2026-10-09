@@ -57,7 +57,7 @@
     { target: '#menu-btn', title: 'Your sidebar',
       text: 'This button shows or hides the sidebar with your settings and account. Let\'s look inside.' },
     { target: '#appearance-section', sidebar: true, title: 'Appearance',
-      text: 'Pick a theme (Dark, Light, Midnight, Violet, Ember, Paper or High contrast), and make the text or the code bigger or smaller. Reset to default undoes it all.' },
+      text: 'Pick a theme (Dark, Light, Midnight, Violet, Ember, Paper or High contrast), and make the text or the code bigger or smaller. ↺ Reset puts it all back to default.' },
     { target: '#history-btn', sidebar: true, title: 'History',
       text: 'See your past analyses with their issues and code, search and filter them, and restore one back into the editor.' },
     { target: '#change-pw-btn', sidebar: true, title: 'Your account',
