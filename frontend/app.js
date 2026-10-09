@@ -445,6 +445,7 @@ let audioGain      = null;
 let audioDistNode  = null;
 let uploadedFile   = null;
 let currentTrackName = null;   // name of the uploaded/saved track in use
+let audioAnalyser  = null;     // level meter on the uploaded track
 
 // Longest track that can be loaded. The browser unpacks the whole song
 // into memory to apply the error effects (about 20 MB per minute), so
@@ -618,6 +619,10 @@ function playAudioFile() {
   audioSource.connect(audioDistNode);
   audioDistNode.connect(audioGain);
   audioGain.connect(audioContext.destination);
+  // Level meter for the waveform pulse (see startWavePulse).
+  audioAnalyser = audioContext.createAnalyser();
+  audioAnalyser.fftSize = 1024;
+  audioGain.connect(audioAnalyser);
   audioSource.start(0);
 }
 
@@ -1061,6 +1066,7 @@ function startPlayback() {
     startLoop();
   }
   startPositionDisplay();
+  startWavePulse();
 
   function tick() {
     if (playIndex >= beatData.length) { playIndex = 0; resetFx(); }
@@ -1069,6 +1075,7 @@ function startPlayback() {
     document.querySelectorAll('.cb-beat').forEach((el, i) =>
       el.classList.toggle('cb-beat--active', i === playIndex)
     );
+    showWaveInfo(beat, { scroll: true });
 
     // Highlight active line in Monaco
     highlightActiveLine(beat.line);
@@ -1096,6 +1103,8 @@ function stopPlayback() {
   playBtn.textContent = '▶';
   document.querySelectorAll('.cb-beat').forEach(el => el.classList.remove('cb-beat--active'));
   stopPositionDisplay();
+  stopWavePulse();
+  showWaveInfo(null);
 }
 
 // ── Playback position (progress bar + label) ───
@@ -1659,23 +1668,145 @@ function hideError() {
   errorBannerMsg.textContent = '';
 }
 
+// ── Rhythm panel: waveform ─────────────────────
+// One bar per code line. Bar height and colour show the severity (clean
+// short → critical tallest). Hovering/focusing a bar shows its line below
+// the wave; clicking it jumps to that line. While music plays, the bar
+// being played lights up and all bars pulse with the music's volume.
+const SEVERITY_LABEL = { clean: 'Clean', warning: 'Warning', error: 'Error', critical: 'Critical' };
+let waveHoverLine = null;   // line under the mouse/keyboard focus, if any
+
+function waveSummary() {
+  const issues = beatData.filter(b => b.severity !== 'clean').length;
+  return `${beatData.length} line${beatData.length === 1 ? '' : 's'} · ` +
+         `${issues} issue${issues === 1 ? '' : 's'} — hover a bar to see its line`;
+}
+
+// Shows one line's details under the wave (or the summary when beat is
+// null). While hovering, the hovered bar wins over the playing one.
+function showWaveInfo(beat, { scroll = false, fromHover = false } = {}) {
+  const info = document.getElementById('wave-info');
+  if (!info) return;
+  if (!fromHover && waveHoverLine !== null) return;
+  if (!beat) {
+    info.className = 'cb-wave__info';
+    info.textContent = beatData.length ? waveSummary() : '';
+    return;
+  }
+  info.className = `cb-wave__info cb-wave__info--${beat.severity}`;
+  info.textContent = `Line ${beat.line} · ${SEVERITY_LABEL[beat.severity] || beat.severity}` +
+                     (beat.message ? ` — ${beat.message}` : '');
+  if (scroll) {
+    const bar = sequencer.querySelector(`.cb-beat[data-line="${beat.line}"]`);
+    const wave = sequencer.querySelector('.cb-wave');
+    if (bar && wave) {
+      // Keep it in view horizontally without scrolling the whole page.
+      const left = bar.offsetLeft - wave.clientWidth / 2 + bar.offsetWidth / 2;
+      wave.scrollTo({ left: Math.max(0, left), behavior: 'smooth' });
+    }
+  }
+}
+
 function renderSequencer(lines) {
   sequencer.innerHTML = '';
-  lines.forEach(b => {
-    const cell = document.createElement('div');
-    cell.className = `cb-beat cb-beat--${b.severity}`;
-    cell.setAttribute('role', 'listitem');
-    cell.setAttribute('data-line', b.line);
-    cell.setAttribute('title', `Line ${b.line}${b.message ? ': ' + b.message : ''}`);
-    cell.textContent = b.line;
-    cell.addEventListener('click', () => {
+  const wave = document.createElement('div');
+  wave.className = 'cb-wave';
+  const bars = document.createElement('div');
+  bars.className = 'cb-wave__bars';
+
+  lines.forEach((b, i) => {
+    const bar = document.createElement('div');
+    bar.className = `cb-beat cb-beat--${b.severity}`;
+    bar.setAttribute('role', 'listitem');
+    bar.setAttribute('data-line', b.line);
+    bar.setAttribute('tabindex', '0');
+    bar.setAttribute('aria-label', `Line ${b.line}, ${SEVERITY_LABEL[b.severity] || b.severity}${b.message ? ': ' + b.message : ''}`);
+    bar.title = `Line ${b.line} · ${SEVERITY_LABEL[b.severity] || b.severity}${b.message ? ' — ' + b.message : ''}`;
+    // How strongly this bar reacts to the volume pulse (varies per bar so
+    // the wave moves like an equalizer instead of all at once).
+    bar.style.setProperty('--k', (0.3 + ((i * 37) % 11) / 20).toFixed(2));
+
+    const jump = () => {
       highlightIssue(b.line);
       if (monacoEditor) monacoEditor.revealLineInCenter(b.line);
+    };
+    bar.addEventListener('click', jump);
+    bar.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); jump(); }
     });
-    sequencer.appendChild(cell);
+    const hoverOn  = () => { waveHoverLine = b.line; showWaveInfo(b, { fromHover: true }); };
+    const hoverOff = () => {
+      waveHoverLine = null;
+      const playing = isPlaying ? beatData[(playIndex - 1 + beatData.length) % beatData.length] : null;
+      showWaveInfo(playing);
+    };
+    bar.addEventListener('mouseenter', hoverOn);
+    bar.addEventListener('focus', hoverOn);
+    bar.addEventListener('mouseleave', hoverOff);
+    bar.addEventListener('blur', hoverOff);
+    bars.appendChild(bar);
   });
+
+  wave.appendChild(bars);
+  const info = document.createElement('div');
+  info.id = 'wave-info';
+  info.className = 'cb-wave__info';
+  info.setAttribute('aria-live', 'polite');
+  sequencer.append(wave, info);
+  waveHoverLine = null;
+  showWaveInfo(null);
+
   playBtn.disabled = false;
   stopBtn.disabled = false;
+}
+
+// ── Waveform pulse ─────────────────────────────
+// Reads the music's volume about 30 times a second and passes it to the
+// bars as --pulse (0–1). Skipped for users who prefer reduced motion.
+let pulseFrame = null;
+let pulseMeter = null;
+const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+
+function currentLevel() {
+  if (audioSource && audioAnalyser) {
+    const data = new Float32Array(audioAnalyser.fftSize);
+    audioAnalyser.getFloatTimeDomainData(data);
+    let sum = 0;
+    for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    return Math.min(1, Math.sqrt(sum / data.length) * 3.5);
+  }
+  if (typeof Tone !== 'undefined') {
+    if (!pulseMeter) {
+      try {
+        pulseMeter = new Tone.Meter({ normalRange: true, smoothing: 0.7 });
+        Tone.getDestination().connect(pulseMeter);
+      } catch (e) { return 0; }
+    }
+    const v = pulseMeter.getValue();
+    return Math.min(1, (Array.isArray(v) ? Math.max(...v) : v) * 2.5);
+  }
+  return 0;
+}
+
+function startWavePulse() {
+  stopWavePulse();
+  if (reduceMotion?.matches) return;
+  let last = 0;
+  const step = (t) => {
+    if (t - last > 33) {
+      last = t;
+      const wave = sequencer.querySelector('.cb-wave');
+      if (wave) wave.style.setProperty('--pulse', currentLevel().toFixed(3));
+    }
+    pulseFrame = requestAnimationFrame(step);
+  };
+  pulseFrame = requestAnimationFrame(step);
+}
+
+function stopWavePulse() {
+  if (pulseFrame) cancelAnimationFrame(pulseFrame);
+  pulseFrame = null;
+  sequencer.querySelector('.cb-wave')?.style.setProperty('--pulse', '0');
 }
 
 function highlightIssue(lineNum) {
@@ -1742,6 +1873,8 @@ function renderIssues(issues) {
       document.querySelectorAll('.cb-beat').forEach((beat, i) => {
         beat.classList.toggle('cb-beat--active', beatData[i]?.line === line);
       });
+      const b = beatData.find(x => x.line === line);
+      if (b) showWaveInfo(b, { scroll: true });
     });
   });
 }

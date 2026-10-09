@@ -439,28 +439,83 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   overflow-y: auto;
 }
 
-.cb-beat {
-  width: 30px;
-  height: 30px;
-  border-radius: var(--radius-sm);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-code);
-  font-size: 0.6rem;
-  font-weight: 600;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: transform 0.08s;
-  user-select: none;
-  flex-shrink: 0;
+/* Waveform: one bar per code line (app.js renderSequencer). */
+.cb-sequencer:has(.cb-wave) {
+  flex-wrap: nowrap;
+  flex-direction: column;
+  gap: 0.4rem;
+  overflow: hidden;
 }
-.cb-beat:hover { transform: scale(1.12); }
-.cb-beat--active { transform: scale(1.2); box-shadow: 0 0 0 2px currentColor; }
-.cb-beat--clean    { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
-.cb-beat--warning  { background: var(--warning-bg);  color: var(--warning);  border-color: var(--warning); }
-.cb-beat--error    { background: var(--error-bg);    color: var(--error);    border-color: var(--error); }
-.cb-beat--critical { background: var(--critical-bg); color: var(--critical); border-color: var(--critical); }
+.cb-wave {
+  --pulse: 0;
+  flex: 1;
+  min-height: 120px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  display: flex;
+}
+.cb-wave__bars {
+  /* Fills the panel; only grows past it (and scrolls) once the bars
+     are at their minimum width. */
+  flex: 1 0 0;
+  min-width: min-content;
+  display: flex;
+  align-items: center;      /* bars grow up and down from the middle */
+  justify-content: center;
+  gap: 4px;
+  padding: 0 0.25rem;
+  min-height: 100%;
+  background: linear-gradient(var(--border), var(--border)) center / 100% 1px no-repeat;
+}
+
+.cb-beat {
+  flex: 1 1 8px;
+  min-width: 6px;
+  max-width: 18px;
+  height: var(--h, 20%);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0.85;
+  /* Pulse with the music: short bars move most, tall ones barely, so
+     nothing grows past the panel. */
+  transform: scaleY(calc(1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1)));
+  transition: transform 0.12s ease-out, opacity 0.12s, box-shadow 0.12s, filter 0.12s;
+  outline: none;
+}
+.cb-beat--clean    { --h: 20%; --kmul: 1;    background: var(--clean); }
+.cb-beat--warning  { --h: 42%; --kmul: 0.6;  background: var(--warning); }
+.cb-beat--error    { --h: 64%; --kmul: 0.3;  background: var(--error); }
+.cb-beat--critical { --h: 86%; --kmul: 0.08; background: var(--critical); }
+
+.cb-beat:hover,
+.cb-beat:focus-visible { opacity: 1; filter: brightness(1.25); }
+.cb-beat:focus-visible { box-shadow: 0 0 0 2px var(--text); }
+.cb-beat--active {
+  opacity: 1;
+  filter: brightness(1.35);
+  transform: scaleY(calc(1.1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1)));
+  box-shadow: 0 0 10px 1px currentColor;
+}
+.cb-beat--clean.cb-beat--active    { color: var(--clean); }
+.cb-beat--warning.cb-beat--active  { color: var(--warning); }
+.cb-beat--error.cb-beat--active    { color: var(--error); }
+.cb-beat--critical.cb-beat--active { color: var(--critical); }
+
+/* Line details under the wave */
+.cb-wave__info {
+  flex-shrink: 0;
+  min-height: 1.3em;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.cb-wave__info--warning  { color: var(--warning); }
+.cb-wave__info--error    { color: var(--error); }
+.cb-wave__info--critical { color: var(--critical); }
+.cb-wave__info--clean    { color: var(--clean); }
 
 /* ── Playback panel ──────────────────────────── */
 .cb-panel--playback {
@@ -1173,7 +1228,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   .cb-stats { grid-template-columns: repeat(4, 1fr); }
 
   /* Beat grid */
-  .cb-beat { width: 26px; height: 26px; font-size: 0.55rem; }
+  .cb-wave { min-height: 140px; }
 }
 
 /* Mobile (480px) */
@@ -1189,7 +1244,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   .cb-monaco { min-height: 220px; }
 
   /* Sequencer beats smaller */
-  .cb-beat { width: 22px; height: 22px; font-size: 0.5rem; }
+  .cb-beat { min-width: 5px; }
 
   /* Stats 2x2 on mobile */
   .cb-stats { grid-template-columns: 1fr 1fr; }
@@ -1214,6 +1269,8 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 
 @media (prefers-reduced-motion: reduce) {
   .cb-beat, .cb-progress__fill { transition: none; }
+  .cb-beat { transform: none; }
+  .cb-beat--active { transform: scaleY(1.12); }
 }
 
 /* ═══════════════════════════════════════════════
