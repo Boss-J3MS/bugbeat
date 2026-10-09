@@ -14,7 +14,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=15" />
+  <link rel="stylesheet" href="style.css?v=16" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -42,6 +42,22 @@
         <option value="rust">Rust</option>
         <option value="go">Go</option>
       </select>
+      <!-- Music style for the generated music (used when no track is loaded),
+           and an uploaded MP3/WAV backing track that replaces it. -->
+      <select id="style-select" class="cb-select" aria-label="Music style" title="Music style">
+        <option value="lofi">🌙 Lo-fi Chill</option>
+        <option value="jazz">🎷 Smooth Jazz</option>
+        <option value="rock">🎸 Rock Drive</option>
+        <option value="electronic">🎛️ Electronic Pulse</option>
+        <option value="ambient">🌊 Ambient Calm</option>
+      </select>
+      <div class="cb-audio-upload">
+        <label for="audio-upload" class="cb-btn cb-btn--ghost cb-audio-upload__btn" title="Upload an MP3 or WAV as backing track">
+          🎧 <span id="audio-label">Upload audio</span>
+        </label>
+        <input type="file" id="audio-upload" accept="audio/*" hidden />
+        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
+      </div>
       <select id="demo-select" class="cb-select" aria-label="Load demo code">
         <option value="">Load demo…</option>
         <option value="clean">✅ Clean code</option>
@@ -89,26 +105,7 @@
        account.js work on them as before. Shown/hidden by menu.js. -->
   <div class="cb-layout">
   <aside id="menu-panel" class="cb-sidebar" aria-label="Settings">
-    <div class="cb-menu__section">
-      <div class="cb-menu__heading">Sound</div>
-      <!-- Style of the generated music (used when no track is loaded). -->
-      <label class="cb-menu__field">
-        <span>Music style</span>
-        <select id="style-select" class="cb-select" aria-label="Music style">
-          <option value="lofi">🌙 Lo-fi Chill</option>
-          <option value="jazz">🎷 Smooth Jazz</option>
-          <option value="rock">🎸 Rock Drive</option>
-          <option value="electronic">🎛️ Electronic Pulse</option>
-          <option value="ambient">🌊 Ambient Calm</option>
-        </select>
-      </label>
-      <div class="cb-audio-upload">
-        <label for="audio-upload" class="cb-btn cb-btn--ghost cb-menu__item" title="Upload an MP3 or WAV as backing track">
-          🎧 <span id="audio-label">Upload audio</span>
-        </label>
-        <input type="file" id="audio-upload" accept="audio/*" hidden />
-        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
-      </div>
+    <div class="cb-menu__section cb-menu__section--tracks">
       <!-- Saved tracks (tracks.js); hidden until the server says saving is on. -->
       <div id="tracks" class="cb-tracks" hidden>
         <div class="cb-tracks__head">

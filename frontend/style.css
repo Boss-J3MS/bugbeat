@@ -1118,16 +1118,27 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   justify-content: flex-start;
   text-align: left;
 }
-.cb-sidebar .cb-audio-upload .cb-menu__item {
-  flex: 1 1 auto;
+/* Upload audio button in the header bar: shows the file name once a
+   track is loaded, so cap its width and cut long names off with "…". */
+.cb-audio-upload__btn {
+  max-width: 180px;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
 }
 #audio-label {
+  display: inline-block;
+  vertical-align: bottom;
+  max-width: 100%;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* The sidebar's My tracks section is empty until saving is turned on. */
+.cb-menu__section--tracks:has(> #tracks[hidden]) { display: none; }
+.cb-menu__section--tracks:has(> #tracks[hidden]) + .cb-menu__section { border-top: 0; }
 
 .cb-menu__user {
   max-width: 100%;
