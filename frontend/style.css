@@ -320,8 +320,11 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 /* ── 2x2 workspace ───────────────────────────── */
 .cb-workspace {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  /* --split-cols / --split-rows are set by resize.js when the panels are
+     dragged to a new size; equal halves otherwise. */
+  grid-template-columns: var(--split-cols, minmax(0, 1fr) minmax(0, 1fr));
+  grid-template-rows: var(--split-rows, minmax(0, 1fr) minmax(0, 1fr));
+  position: relative;          /* the resize handles are placed inside it */
   flex: 1;
   /* No overflow:hidden here on purpose. body is a column flex layout with
      only min-height:100vh (not a fixed height), so when the header wraps
@@ -1842,4 +1845,52 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 @media (prefers-reduced-motion: reduce) {
   .cb-tour__spot, .cb-tour__card { transition: none; }
   .cb-tour__card--in { animation: none; }
+}
+
+/* ── Panel resize handles (resize.js) ────────────
+   Invisible strips over the panel borders that light up green on hover
+   or while dragging. */
+.cb-gutter {
+  position: absolute;
+  z-index: 15;
+  touch-action: none;
+}
+.cb-gutter--x { width: 9px; margin-left: -5px; cursor: col-resize; }
+.cb-gutter--y { height: 9px; margin-top: -5px; cursor: row-resize; }
+.cb-gutter--both {
+  width: 15px; height: 15px; margin: -8px 0 0 -8px;
+  cursor: move; z-index: 16; border-radius: 50%;
+}
+/* The visible line, centred in the strip. */
+.cb-gutter::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.cb-gutter--x::after { top: 0; bottom: 0; left: 3px; width: 3px; }
+.cb-gutter--y::after { left: 0; right: 0; top: 3px; height: 3px; }
+.cb-gutter--both::after { inset: 3px; border-radius: 50%; }
+.cb-gutter:hover::after,
+.cb-gutter:focus-visible::after,
+.cb-resizing--x .cb-gutter--x::after,
+.cb-resizing--y .cb-gutter--y::after,
+.cb-resizing--both .cb-gutter::after { opacity: 1; }
+/* Hovering the crossing lights up both lines. */
+.cb-gutter--both:hover ~ .cb-gutter::after { opacity: 1; }
+.cb-gutter:focus-visible { outline: none; }
+
+/* While dragging: keep the resize cursor everywhere and don't select text. */
+body.cb-resizing { user-select: none; }
+body.cb-resizing--x, body.cb-resizing--x * { cursor: col-resize !important; }
+body.cb-resizing--y, body.cb-resizing--y * { cursor: row-resize !important; }
+body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
+
+/* Stacked panels on narrow screens: nothing to resize. */
+@media (max-width: 768px) {
+  .cb-gutter { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cb-gutter::after { transition: none; }
 }
