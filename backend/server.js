@@ -2412,9 +2412,36 @@ app.patch('/admin/bug-reports/:id/status', requireAdmin, async (req, res) => {
     return res.status(400).json({ error: 'Invalid status.' });
   }
   try {
+    const [rows] = await db.query(
+      'SELECT user_id, description, status FROM bug_reports WHERE id = ?', [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Bug report not found.' });
+    const report = rows[0];
+
     await db.query('UPDATE bug_reports SET status = ? WHERE id = ?', [status, id]);
+
+    // Let the person who reported it know, in their 🔔 notifications,
+    // when work starts on it and when it's fixed. A failure here doesn't
+    // undo the status change.
+    if (report.status !== status && status !== 'open') {
+      const desc = String(report.description || '').replace(/\s+/g, ' ').trim();
+      const short = desc.length > 60 ? desc.slice(0, 59) + '…' : desc;
+      const message = status === 'resolved'
+        ? `Your bug report "${short}" has been resolved. Thanks for reporting it!`
+        : `Your bug report "${short}" is now in progress. The team is working on it.`;
+      try {
+        await db.query(
+          'INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)',
+          [report.user_id, message, 'system']
+        );
+      } catch (err) {
+        console.warn('[bug-reports] could not notify the reporter:', err.message);
+      }
+    }
+
     res.json({ message: 'Status updated.' });
   } catch (err) {
+    console.error('/admin/bug-reports/:id/status error:', err.message);
     res.status(500).json({ error: 'Could not update status.' });
   }
 });

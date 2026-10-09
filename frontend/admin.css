@@ -391,3 +391,44 @@
   overflow: hidden;
 }
 .admin-bc-warn { color: var(--warning); }
+
+/* ── Bug reports: status filter + coloured status ── */
+.admin-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.85rem;
+}
+.admin-filter__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  height: 30px;
+  padding: 0 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.admin-filter__btn:hover { color: var(--text); }
+.admin-filter__btn.is-active { color: var(--accent); border-color: var(--accent); }
+.admin-filter__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.admin-filter__count {
+  min-width: 1.4em;
+  padding: 0 0.35em;
+  border-radius: 999px;
+  background: var(--bg-panel);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+/* Status dropdown coloured by its value. */
+.admin-bug-status { font-weight: 600; }
+.admin-bug-status--open        { color: var(--critical); border-color: var(--critical); background: var(--critical-bg); }
+.admin-bug-status--in_progress { color: var(--warning);  border-color: var(--warning);  background: var(--warning-bg); }
+.admin-bug-status--resolved    { color: var(--clean);    border-color: var(--clean);    background: var(--clean-bg); }
+.admin-bug-status option { color: var(--text); background: var(--bg-panel); }

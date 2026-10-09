@@ -95,6 +95,9 @@
         action: user?.role === 'admin' ? { label: 'Open Admin page', run: () => { window.location.href = 'admin.html'; } } : null
       };
     }
+    if (/^Your bug report/i.test(msg)) {
+      return { icon: '🐞', kind: 'Bug report update', action: null };
+    }
     if (/^Welcome to BugBeat/i.test(msg)) {
       return { icon: '👋', kind: 'Welcome', action: null };
     }
