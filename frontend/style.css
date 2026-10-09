@@ -1648,7 +1648,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
      height (with flex:1 + min-height it stayed one screen tall and the
      panels spilled out below it), so the padding lands after the last
      panel. */
-  .cb-workspace { flex: none; padding-bottom: 64px; }
+  .cb-workspace { flex: none; }
 }
 
 /* ═══════════════════════════════════════════════

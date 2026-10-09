@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=24" />
+  <link rel="stylesheet" href="style.css?v=25" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -176,6 +176,8 @@
       <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
       <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
       <button id="tour-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🧭 Take the tour</button>
+      <!-- Opens the bug report form (app.js; keeps its old id). -->
+      <button id="bugreport-fab" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🐞 Report a bug</button>
       <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Logout</button>
     </div>
   </aside>
@@ -422,9 +424,8 @@
   </div>
 
   <!-- ═══════════════════════════════════════════
-       BUG REPORT — floating button + modal
+       BUG REPORT — modal (opened from "Report a bug" in the sidebar)
   ═══════════════════════════════════════════ -->
-  <button id="bugreport-fab" class="cb-bugreport-fab" title="Report a bug" aria-label="Report a bug">🐞</button>
 
   <div id="bugreport-modal" class="cb-bugreport-modal" hidden role="dialog" aria-label="Report a bug" aria-modal="true">
     <div class="cb-bugreport-modal__box">
@@ -554,7 +555,7 @@
   <script src="menu.js?v=9"></script>
   <script src="account.js"></script>
   <script src="logout.js?v=2"></script>
-  <script src="tour.js?v=5"></script>
+  <script src="tour.js?v=6"></script>
   <script src="resize.js?v=2"></script>
 
 </body>

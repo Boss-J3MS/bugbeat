@@ -68,8 +68,8 @@
       text: 'Come back here any time to take this tour again.' },
 
     // ── Help ──
-    { target: '#bugreport-fab', title: 'Found a problem in BugBeat?',
-      text: 'Tell us here and the team will look into it.' },
+    { target: '#bugreport-fab', sidebar: true, title: 'Found a problem in BugBeat?',
+      text: 'Report a bug here and the team will look into it.' },
     { title: 'You\'re all set!',
       text: 'Try it now: load a demo, press Analyze, then press play to hear your code.' }
   ];
