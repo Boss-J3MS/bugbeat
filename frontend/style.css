@@ -67,6 +67,70 @@
   --status-success-text: #1e7a3d;
 }
 
+/* ── Colour themes (Appearance in the sidebar, appearance.js) ──────
+   Each theme sits on top of light or dark mode (data-theme) and only
+   swaps the base colours; the severity colours come from that mode.
+   Keep these as 6-digit hex values: the code editor reads them too. */
+:root[data-palette="midnight"] {
+  --bg:          #0b1020;
+  --bg-panel:    #111833;
+  --bg-input:    #18213f;
+  --border:      #26315a;
+  --text:        #e6ebff;
+  --text-muted:  #8390bd;
+  --accent:      #5cc8ff;
+  --accent-hover: #85d7ff;
+  --on-accent:   #001018;
+}
+:root[data-palette="violet"] {
+  --bg:          #13101c;
+  --bg-panel:    #1a1626;
+  --bg-input:    #221d31;
+  --border:      #352d4a;
+  --text:        #ece8f6;
+  --text-muted:  #9389ad;
+  --accent:      #b48cff;
+  --accent-hover: #c9abff;
+  --on-accent:   #12081f;
+}
+:root[data-palette="ember"] {
+  --bg:          #14100d;
+  --bg-panel:    #1c1612;
+  --bg-input:    #251d17;
+  --border:      #3a2e24;
+  --text:        #f3ebe4;
+  --text-muted:  #a39383;
+  --accent:      #ff9f43;
+  --accent-hover: #ffb56b;
+  --on-accent:   #1a0d00;
+}
+:root[data-palette="paper"] {
+  --bg:          #f5efe3;
+  --bg-panel:    #fbf7ef;
+  --bg-input:    #ede5d5;
+  --border:      #d9cdb6;
+  --text:        #2b2418;
+  --text-muted:  #75684f;
+  --accent:      #a85a14;
+  --accent-hover: #8f4b0f;
+  --on-accent:   #ffffff;
+}
+:root[data-palette="contrast"] {
+  --bg:          #000000;
+  --bg-panel:    #0a0a0a;
+  --bg-input:    #161616;
+  --border:      #6b6b6b;
+  --text:        #ffffff;
+  --text-muted:  #cfcfcf;
+  --accent:      #ffe14d;
+  --accent-hover: #fff07a;
+  --on-accent:   #000000;
+  --clean:       #4cd97b;
+  --warning:     #ffb020;
+  --error:       #ff7a4d;
+  --critical:    #ff5252;
+}
+
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* Several components below (buttons, panels, modals) set their own
@@ -150,9 +214,9 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  /* Same width as the sidebar (260px) minus the header's left padding,
+  /* Same width as the sidebar (16.25rem) minus the header's left padding,
      so the header's left edge block lines up with the sidebar below it. */
-  width: calc(260px - 1.25rem);
+  width: calc(16.25rem - 1.25rem);
   flex-shrink: 0;
 }
 
@@ -1151,8 +1215,9 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 }
 
 .cb-sidebar {
-  width: 260px;
-  flex: 0 0 260px;
+  /* In rem, so it grows with the Text size setting (16.25rem = 260px). */
+  width: 16.25rem;
+  flex: 0 0 16.25rem;
   background: var(--bg-panel);
   border-right: 1px solid var(--border);
   padding: 0.35rem 0;
@@ -1895,3 +1960,38 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 @media (prefers-reduced-motion: reduce) {
   .cb-gutter::after { transition: none; }
 }
+
+/* ── Appearance controls in the sidebar ────────── */
+.cb-menu__row > span:first-child { white-space: nowrap; }
+.cb-stepper {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+.cb-stepper__btn {
+  width: 2rem;
+  padding: 0;
+  justify-content: center;
+  font-weight: 600;
+}
+.cb-stepper__value {
+  min-width: 3.2rem;
+  text-align: center;
+  font-family: var(--font-code);
+  font-size: 0.75rem;
+  color: var(--text);
+}
+.cb-menu__link {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.cb-menu__link:hover { color: var(--text); }

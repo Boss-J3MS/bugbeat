@@ -5,16 +5,26 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BugBeat</title>
   <link rel="icon" type="image/png" href="bugbeatLogo.png" />
-  <!-- Apply saved theme before first paint to avoid a flash of the wrong theme -->
+  <!-- Apply saved appearance (theme, text size) before first paint, to
+       avoid a flash of the wrong theme. See appearance.js. -->
   <script>
     (function () {
       try {
-        var t = localStorage.getItem('cb-theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', t);
+        var root = document.documentElement;
+        var mode = localStorage.getItem('cb-theme') || 'dark';
+        var palette = localStorage.getItem('cb-palette');
+        var lightPalettes = { light: 1, paper: 1 };
+        // Ignore a saved colour theme whose light/dark mode no longer
+        // matches (e.g. mode was switched on the login page since).
+        if (palette && (palette in lightPalettes ? 'light' : 'dark') !== mode) palette = null;
+        root.setAttribute('data-theme', mode);
+        if (palette && palette !== 'dark' && palette !== 'light') root.setAttribute('data-palette', palette);
+        var text = parseFloat(localStorage.getItem('cb-text-size'));
+        if (text && text !== 100) root.style.fontSize = text + '%';
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=20" />
+  <link rel="stylesheet" href="style.css?v=21" />
   <link rel="stylesheet" href="history.css?v=3" />
 
   <!-- Monaco Editor -->
@@ -130,15 +140,37 @@
       </div>
     </div>
 
+    <!-- Appearance (appearance.js): colour theme, text size, code size. -->
+    <div class="cb-menu__section">
+      <div class="cb-menu__heading">Appearance</div>
+      <label class="cb-menu__field">
+        <span>Theme</span>
+        <select id="theme-select" class="cb-select" aria-label="Theme"></select>
+      </label>
+      <div class="cb-menu__row">
+        <span id="text-size-label">Text size</span>
+        <div class="cb-stepper" role="group" aria-labelledby="text-size-label">
+          <button id="text-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller text">A−</button>
+          <span id="text-size-value" class="cb-stepper__value" aria-live="polite">100%</span>
+          <button id="text-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger text">A+</button>
+        </div>
+      </div>
+      <div class="cb-menu__row">
+        <span id="code-size-label">Code size</span>
+        <div class="cb-stepper" role="group" aria-labelledby="code-size-label">
+          <button id="code-size-down" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Smaller code">−</button>
+          <span id="code-size-value" class="cb-stepper__value" aria-live="polite">13px</span>
+          <button id="code-size-up" class="cb-btn cb-btn--ghost cb-stepper__btn" type="button" aria-label="Larger code">+</button>
+        </div>
+      </div>
+      <button id="appearance-reset" class="cb-menu__link" type="button">Reset to default</button>
+    </div>
+
     <div class="cb-menu__section">
       <div class="cb-menu__heading">Account</div>
       <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
       <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
       <button id="change-pw-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🔑 Change password</button>
-      <div class="cb-menu__row">
-        <span>Light / dark mode</span>
-        <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
-      </div>
       <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>⚙ Admin</button>
       <button id="tour-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🧭 Take the tour</button>
       <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Logout</button>
@@ -509,16 +541,17 @@
   </script>
 
   <script src="popover.js?v=2"></script>
-  <script src="app.js?v=15"></script>
+  <script src="app.js?v=16"></script>
   <script src="history.js?v=5"></script>
   <script src="notif-view.js?v=3"></script>
   <script src="banner.js"></script>
   <script src="tracks.js?v=2"></script>
   <script src="theme.js"></script>
+  <script src="appearance.js"></script>
   <script src="menu.js?v=8"></script>
   <script src="account.js"></script>
   <script src="logout.js?v=2"></script>
-  <script src="tour.js"></script>
+  <script src="tour.js?v=2"></script>
   <script src="resize.js?v=2"></script>
 
 </body>

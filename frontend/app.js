@@ -1940,22 +1940,69 @@ require(['vs/editor/editor.main'], function () {
     }
   });
 
+  // The editor takes its colours from the page's current theme (the CSS
+  // variables in style.css), so every theme in Appearance — not just
+  // light and dark — gets a matching editor. Syntax colours come from the
+  // light or dark base theme above; background, text, line numbers,
+  // cursor and keywords follow the theme.
+  function cssColor(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback;
+  }
   function monacoThemeForPage() {
-    return document.documentElement.getAttribute('data-theme') === 'light' ? 'codebeat-light' : 'codebeat-dark';
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const baseName = isLight ? 'codebeat-light' : 'codebeat-dark';
+    if (!document.documentElement.hasAttribute('data-palette')) return baseName;
+
+    const bg     = cssColor('--bg', isLight ? '#ffffff' : '#0d0f12');
+    const panel  = cssColor('--bg-panel', bg);
+    const text   = cssColor('--text', isLight ? '#1b1e24' : '#e8eaf0');
+    const muted  = cssColor('--text-muted', '#6b7180');
+    const accent = cssColor('--accent', '#1de4a8');
+    const border = cssColor('--border', '#2a2e38');
+    monaco.editor.defineTheme('codebeat-palette', {
+      base: isLight ? 'vs' : 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: 'comment',  foreground: muted.slice(1), fontStyle: 'italic' },
+        { token: 'keyword',  foreground: accent.slice(1), fontStyle: 'bold' },
+        { token: 'variable', foreground: text.slice(1) },
+      ],
+      colors: {
+        'editor.background':                 bg,
+        'editor.foreground':                 text,
+        'editorLineNumber.foreground':       muted + '99',
+        'editorLineNumber.activeForeground': accent,
+        'editor.lineHighlightBackground':    panel,
+        'editorCursor.foreground':           accent,
+        'editor.selectionBackground':        accent + '30',
+        'editorGutter.background':           bg,
+        'scrollbarSlider.background':        border + '80',
+        'minimap.background':                bg,
+      }
+    });
+    return 'codebeat-palette';
   }
 
-  // Exposed so theme.js can switch Monaco's theme when the page's
-  // light/dark toggle is clicked.
-  window.setMonacoTheme = function (pageTheme) {
-    monaco.editor.setTheme(pageTheme === 'light' ? 'codebeat-light' : 'codebeat-dark');
+  // Exposed so theme.js / appearance.js can switch Monaco's theme when the
+  // page's theme changes.
+  window.setMonacoTheme = function () {
+    monaco.editor.setTheme(monacoThemeForPage());
   };
+
+  // Code font size chosen in Appearance (appearance.js), 13px by default.
+  let savedCodeSize = 13;
+  try {
+    const v = parseInt(localStorage.getItem('cb-code-size'), 10);
+    if (v >= 10 && v <= 24) savedCodeSize = v;
+  } catch (e) {}
 
   // Mount Monaco
   monacoEditor = monaco.editor.create(document.getElementById('monaco-editor'), {
     value:              '',
     language:           'javascript',
     theme:              monacoThemeForPage(),
-    fontSize:           13,
+    fontSize:           savedCodeSize,
     fontFamily:         "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
     lineNumbers:        'on',
     glyphMargin:        true,

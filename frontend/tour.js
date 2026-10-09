@@ -34,7 +34,7 @@
     { target: '#notif-btn', title: 'Notifications',
       text: 'Updates and announcements from the BugBeat team appear here.' },
     { target: '#menu-btn', title: 'Your sidebar',
-      text: 'This button shows or hides the sidebar, where you\'ll find History, Change password, light/dark mode and Logout.' },
+      text: 'This button shows or hides the sidebar, where you\'ll find History, the theme, text and code size settings, and Logout.' },
     { target: '#bugreport-fab', title: 'Found a problem in BugBeat?',
       text: 'Tell us here and the team will look into it.' },
     { title: 'You\'re all set',
