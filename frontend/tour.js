@@ -49,7 +49,7 @@
 
     // ── Layout ──
     { target: '.cb-gutter--both', bodyClass: 'cb-tour-show-gutters', title: 'Resize the panels',
-      text: 'Drag the borders between the panels, or this point where they meet, to make any panel bigger. Double-click a border to go back to the default layout.' },
+      text: 'Drag the borders between the panels, or this point where they meet, to resize Code, Issues and Rhythm. Playback keeps its size. Double-click a border to go back to the default layout.' },
     { target: '#notif-btn', title: 'Notifications',
       text: 'Finished analyses and announcements from the BugBeat team show up here.' },
 

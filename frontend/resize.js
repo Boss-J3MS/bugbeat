@@ -11,7 +11,7 @@
 (function () {
   const ws     = document.querySelector('.cb-workspace');
   const topL   = document.querySelector('.cb-panel--editor');    // top-left panel
-  const botR   = document.querySelector('.cb-panel--playback');  // bottom-right panel
+  const botR   = document.querySelector('.cb-panel--playback');  // bottom-right panel (fixed height)
   if (!ws || !topL || !botR) return;
 
   const KEY    = 'cb-panel-split';
@@ -69,7 +69,9 @@
     const top = a.top - w.top, height = b.bottom - a.top;
     const xLine = a.right - w.left, yLine = a.bottom - w.top;
     gx.style.left = xLine + 'px'; gx.style.top = top + 'px'; gx.style.height = height + 'px';
-    gy.style.top  = yLine + 'px'; gy.style.left = '0px';    gy.style.width = w.width + 'px';
+    // The Code/Rhythm border is only on the left: Playback on the right
+    // has a fixed height and isn't resizable.
+    gy.style.top  = yLine + 'px'; gy.style.left = '0px';    gy.style.width = (a.right - w.left) + 'px';
     gb.style.left = xLine + 'px'; gb.style.top  = yLine + 'px';
   }
 
@@ -89,7 +91,8 @@
       const a = topL.getBoundingClientRect();
       const b = botR.getBoundingClientRect();
       if (axes !== 'y') split.x = (ev.clientX - w.left) / w.width;
-      if (axes !== 'x') split.y = (ev.clientY - a.top) / (b.bottom - a.top);
+      // Rows 1–2 are the space above the fixed-height Playback panel.
+      if (axes !== 'x') split.y = (ev.clientY - a.top) / (b.top - a.top);
       apply();
     };
     const stop = () => {
