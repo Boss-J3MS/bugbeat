@@ -144,37 +144,6 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
   return rawText.replace(/```json|```/g, '').trim();
 }
 
-// ── Helper: look up a song's REAL tempo/key via GetSongBPM ────
-// Gemini is asked to "recall" a song's actual BPM from memory, which it
-// frequently gets wrong or invents outright. GetSongBPM.com's database
-// gives us a verified tempo (and key) to use as a hard anchor instead of
-// trusting the model's memory. Returns null on no match / no API key /
-// any failure — the caller falls back to Gemini's own guess.
-async function lookupRealBPM(query) {
-  const apiKey = process.env.GETSONGBPM_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const url = `https://api.getsong.co/search/?api_key=${apiKey}&type=song&lookup=${encodeURIComponent(query)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data    = await res.json();
-    const results = data?.search;
-    if (!Array.isArray(results) || !results.length) return null;
-    const top = results[0];
-    const tempo = Number(top.tempo);
-    if (!Number.isFinite(tempo)) return null;
-    return {
-      title:  top.title || query,
-      artist: top.artist?.name || '',
-      tempo,
-      key:    top.key_of || null
-    };
-  } catch (err) {
-    console.error('GetSongBPM lookup failed:', err.message);
-    return null;
-  }
-}
-
 // ── Helper: sanitize a Gemini-generated music style ────────────
 // Gemini doesn't always follow the requested schema/ranges exactly.
 // Tone.js throws on bad values (e.g. an unknown oscillator type), which
@@ -459,23 +428,13 @@ app.post('/music-search', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
 
-  // Try to find the song in a real music database first, so Gemini gets a
-  // verified tempo/key to anchor to instead of relying on its own memory.
-  const realSong = await lookupRealBPM(query);
-
   const prompt = `You are a music parameter engine for a web app called BugBeat that turns code errors into music.
 
 The user searched for a music style or song: "${query}"
-${realSong ? `
-VERIFIED DATABASE MATCH — treat this as ground truth, not a suggestion:
-"${realSong.title}"${realSong.artist ? ` by ${realSong.artist}` : ''} has a real, measured tempo of
-${realSong.tempo} BPM${realSong.key ? ` and is in the key of ${realSong.key}` : ''}. You MUST set
-"bpm" to exactly ${realSong.tempo} in your JSON response. Use this verified tempo${realSong.key ? ' and key' : ''}
-as the anchor for everything else you generate below.
-` : ''}
+
 If "${query}" sounds like a real song title or artist you recognize, recall its ACTUAL known
 characteristics as accurately as you can and use them as hard anchors, not loose suggestions:
-- its real approximate BPM/tempo${realSong ? ' (already given above — use that exact value)' : ''}
+- its real approximate BPM/tempo
 - its real key or scale (major/minor, and roughly which key)
 - its real genre and era (e.g. 2010s OPM pop-rock, 2020s future bass, 90s boom-bap)
 - its real typical instrumentation and production texture (e.g. acoustic guitar-driven, 808-heavy,
@@ -574,10 +533,7 @@ Rules:
     const text   = await callGemini(apiKey, prompt, 0.7);
     const parsed = JSON.parse(text);
     const style  = sanitizeStyle(parsed);
-    // Belt-and-suspenders: force the verified tempo even if Gemini didn't
-    // follow the instruction exactly.
-    if (realSong) style.bpm = Math.round(clampNum(realSong.tempo, 60, 180, style.bpm));
-    res.json({ style, matchedSong: realSong ? { title: realSong.title, artist: realSong.artist, tempo: realSong.tempo } : null });
+    res.json({ style });
   } catch (err) {
     console.error('/music-search error:', err.message);
     res.status(502).json({ error: err.message });
