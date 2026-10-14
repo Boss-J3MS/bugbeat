@@ -144,37 +144,6 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
   return rawText.replace(/```json|```/g, '').trim();
 }
 
-// ── Helper: look up a song's REAL tempo/key via GetSongBPM ────
-// Gemini is asked to "recall" a song's actual BPM from memory, which it
-// frequently gets wrong or invents outright. GetSongBPM.com's database
-// gives us a verified tempo (and key) to use as a hard anchor instead of
-// trusting the model's memory. Returns null on no match / no API key /
-// any failure — the caller falls back to Gemini's own guess.
-async function lookupRealBPM(query) {
-  const apiKey = process.env.GETSONGBPM_API_KEY;
-  if (!apiKey) return null;
-  try {
-    const url = `https://api.getsong.co/search/?api_key=${apiKey}&type=song&lookup=${encodeURIComponent(query)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data    = await res.json();
-    const results = data?.search;
-    if (!Array.isArray(results) || !results.length) return null;
-    const top = results[0];
-    const tempo = Number(top.tempo);
-    if (!Number.isFinite(tempo)) return null;
-    return {
-      title:  top.title || query,
-      artist: top.artist?.name || '',
-      tempo,
-      key:    top.key_of || null
-    };
-  } catch (err) {
-    console.error('GetSongBPM lookup failed:', err.message);
-    return null;
-  }
-}
-
 // ── Helper: sanitize a Gemini-generated music style ────────────
 // Gemini doesn't always follow the requested schema/ranges exactly.
 // Tone.js throws on bad values (e.g. an unknown oscillator type), which
@@ -363,7 +332,7 @@ app.post('/analyze', async (req, res) => {
   // treated as Auto-detect.
   const LANG_NAMES = {
     javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
-    java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+    java: 'Java', c: 'C', cpp: 'C++', kotlin: 'Kotlin', php: 'PHP'
   };
   const langName   = LANG_NAMES[lang] || null;          // null = Auto-detect
   const langLabel  = langName ? `${langName} ` : '';
@@ -378,7 +347,7 @@ app.post('/analyze', async (req, res) => {
 Do NOT guess or switch to another language. If a line is not valid ${langName} (for example, it is written in a different programming language), mark it "error" (or "critical" if the code cannot run at all) with a message like "Not valid ${langName} syntax", and in the suggestion explain how to write it in ${langName} or to choose the correct language.
 Set "language" to "${lang}".`
     : `The user chose Auto-detect. First work out which programming language the code is written in, then analyze it as that language.
-Set "language" to one of: "javascript", "python", "typescript", "java", "cpp", "rust", "go", or "other".`;
+Set "language" to one of: "javascript", "python", "typescript", "java", "c", "cpp", "kotlin", "php", or "other".`;
 
   const prompt = `You are a code analysis engine. Analyze every line of the following ${langLabel}code.
 
@@ -459,23 +428,13 @@ app.post('/music-search', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
 
-  // Try to find the song in a real music database first, so Gemini gets a
-  // verified tempo/key to anchor to instead of relying on its own memory.
-  const realSong = await lookupRealBPM(query);
-
   const prompt = `You are a music parameter engine for a web app called BugBeat that turns code errors into music.
 
 The user searched for a music style or song: "${query}"
-${realSong ? `
-VERIFIED DATABASE MATCH — treat this as ground truth, not a suggestion:
-"${realSong.title}"${realSong.artist ? ` by ${realSong.artist}` : ''} has a real, measured tempo of
-${realSong.tempo} BPM${realSong.key ? ` and is in the key of ${realSong.key}` : ''}. You MUST set
-"bpm" to exactly ${realSong.tempo} in your JSON response. Use this verified tempo${realSong.key ? ' and key' : ''}
-as the anchor for everything else you generate below.
-` : ''}
+
 If "${query}" sounds like a real song title or artist you recognize, recall its ACTUAL known
 characteristics as accurately as you can and use them as hard anchors, not loose suggestions:
-- its real approximate BPM/tempo${realSong ? ' (already given above — use that exact value)' : ''}
+- its real approximate BPM/tempo
 - its real key or scale (major/minor, and roughly which key)
 - its real genre and era (e.g. 2010s OPM pop-rock, 2020s future bass, 90s boom-bap)
 - its real typical instrumentation and production texture (e.g. acoustic guitar-driven, 808-heavy,
@@ -574,10 +533,7 @@ Rules:
     const text   = await callGemini(apiKey, prompt, 0.7);
     const parsed = JSON.parse(text);
     const style  = sanitizeStyle(parsed);
-    // Belt-and-suspenders: force the verified tempo even if Gemini didn't
-    // follow the instruction exactly.
-    if (realSong) style.bpm = Math.round(clampNum(realSong.tempo, 60, 180, style.bpm));
-    res.json({ style, matchedSong: realSong ? { title: realSong.title, artist: realSong.artist, tempo: realSong.tempo } : null });
+    res.json({ style });
   } catch (err) {
     console.error('/music-search error:', err.message);
     res.status(502).json({ error: err.message });
@@ -2121,9 +2077,10 @@ const PAIZA_LANGUAGE_IDS = {
   javascript: 'javascript',
   python:     'python3',
   java:       'java',
+  c:          'c',
   cpp:        'cpp',
-  rust:       'rust',
-  go:         'go',
+  kotlin:     'kotlin',
+  php:        'php',
 };
 
 // paiza.io's guest key has no documented quota, but this still gets its
@@ -2141,7 +2098,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── POST /execute ───────────────────────────────
 app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
-  const code  = String(req.body?.code  || '');
+  let   code  = String(req.body?.code  || '');
   const lang  = String(req.body?.lang  || '');
   const stdin = String(req.body?.stdin || '');
   const paizaLang = PAIZA_LANGUAGE_IDS[lang];
@@ -2159,6 +2116,10 @@ app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
         : 'Pick a specific language (not Auto-detect) before running.'
     });
   }
+
+  // PHP only runs what comes after an opening <?php tag; without one it
+  // just prints the code back. Add it when the student left it out.
+  if (lang === 'php' && !/<\?(php|=)/i.test(code)) code = `<?php\n${code}`;
 
   try {
     const createRes = await fetch(`${PAIZA_API_URL}/runners/create`, {
@@ -2183,11 +2144,11 @@ app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
     }
 
     // paiza.io's run is async — poll get_details until status flips to
-    // "completed". Its own execution cap is only ~2s, so a handful of
-    // short polls is plenty; this just bounds total wait time.
+    // "completed". Running takes at most ~2s, but compiling can take
+    // several seconds more (Kotlin especially), so wait up to ~20s.
     let result = null;
-    for (let i = 0; i < 10; i++) {
-      await sleep(700);
+    for (let i = 0; i < 25; i++) {
+      await sleep(800);
       const detailsRes = await fetch(
         `${PAIZA_API_URL}/runners/get_details?id=${encodeURIComponent(created.id)}&api_key=${PAIZA_API_KEY}`
       );
@@ -2257,14 +2218,44 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
     const [[issuesCount]]   = await db.query('SELECT SUM(issues_found) as count FROM analyses');
     const [[avgScore]]      = await db.query('SELECT AVG(fusion_score) as avg FROM analyses');
     const [riskBreakdown]   = await db.query(
-      'SELECT risk_level, COUNT(*) as count FROM analyses GROUP BY risk_level'
+      'SELECT LOWER(risk_level) AS risk_level, COUNT(*) as count FROM analyses GROUP BY LOWER(risk_level)'
     );
     const [langBreakdown]   = await db.query(
-      'SELECT language, COUNT(*) as count FROM analyses GROUP BY language ORDER BY count DESC LIMIT 5'
+      `SELECT LOWER(language) AS language, COUNT(*) as count FROM analyses
+       WHERE language IS NOT NULL AND language <> ''
+       GROUP BY LOWER(language) ORDER BY count DESC LIMIT 5`
     );
     const [recentUsers]     = await db.query(
       'SELECT id, username, email, role, created_at, last_login FROM users ORDER BY created_at DESC LIMIT 5'
     );
+
+    // The last 7 days, for the "+N this week" lines.
+    const [[weekUsers]]    = await db.query(
+      'SELECT COUNT(*) AS count FROM users WHERE created_at >= NOW() - INTERVAL 7 DAY'
+    );
+    const [[weekAnalyses]] = await db.query(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(issues_found), 0) AS issues, AVG(fusion_score) AS avg
+       FROM analyses WHERE created_at >= NOW() - INTERVAL 7 DAY`
+    );
+
+    // Latest analyses for the overview list.
+    const [recentAnalyses] = await db.query(
+      `SELECT a.id, u.username, a.language, a.issues_found, a.risk_level, a.fusion_score, a.created_at
+       FROM analyses a JOIN users u ON u.id = a.user_id
+       ORDER BY a.created_at DESC LIMIT 6`
+    );
+
+    // Bug reports that still need attention (null if the table is missing).
+    let bugReports = null;
+    try {
+      const [bugRows] = await db.query(
+        "SELECT status, COUNT(*) AS count FROM bug_reports WHERE status IN ('open', 'in_progress') GROUP BY status"
+      );
+      bugReports = { open: 0, in_progress: 0 };
+      for (const r of bugRows) bugReports[r.status] = Number(r.count) || 0;
+    } catch (e) {
+      if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+    }
 
     res.json({
       totals: {
@@ -2273,9 +2264,17 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
         issues_found : issuesCount.count || 0,
         avg_score    : round(avgScore.avg || 0, 2)
       },
-      risk_breakdown : riskBreakdown,
-      lang_breakdown : langBreakdown,
-      recent_users   : recentUsers
+      week: {
+        users     : Number(weekUsers.count) || 0,
+        analyses  : Number(weekAnalyses.count) || 0,
+        issues    : Number(weekAnalyses.issues) || 0,
+        avg_score : round(weekAnalyses.avg || 0, 2)
+      },
+      risk_breakdown  : riskBreakdown,
+      lang_breakdown  : langBreakdown,
+      recent_users    : recentUsers,
+      recent_analyses : recentAnalyses,
+      bug_reports     : bugReports
     });
 
   } catch (err) {
@@ -2530,18 +2529,70 @@ app.post('/auth/admin-invite/accept', requireAuth, authLimiter, async (req, res)
 });
 
 // ── GET /admin/analyses ────────────────────────
+// Optional filters: ?risk=low|medium|high|critical and ?language=python.
+// Filtering happens here, so it covers every analysis and not only the
+// latest 100 that are listed. Also returns, for the filter controls:
+//   risk_counts — how many analyses per risk level (language filter applied)
+//   languages   — every language that has analyses, with its count
+//   total       — how many analyses match both filters
+const ANALYSIS_RISKS = ['low', 'medium', 'high', 'critical'];
 app.get('/admin/analyses', requireAdmin, async (req, res) => {
+  const riskQ = typeof req.query.risk === 'string' ? req.query.risk.trim().toLowerCase() : '';
+  const langQ = typeof req.query.language === 'string' ? req.query.language.trim().slice(0, 50) : '';
+  const risk = ANALYSIS_RISKS.includes(riskQ) ? riskQ : null;
+  const language = langQ || null;
   try {
-    const [rows] = await db.query(`
-      SELECT a.id, u.username, a.language, a.total_lines,
-             a.issues_found, a.risk_level, a.fusion_score, a.created_at
-      FROM analyses a
-      JOIN users u ON u.id = a.user_id
-      ORDER BY a.created_at DESC
-      LIMIT 100
-    `);
-    res.json({ analyses: rows });
+    const langWhere  = language ? 'WHERE LOWER(a.language) = LOWER(?)' : '';
+    const langParams = language ? [language] : [];
+
+    const [countRows] = await db.query(
+      `SELECT LOWER(a.risk_level) AS risk, COUNT(*) AS n
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       ${langWhere}
+       GROUP BY LOWER(a.risk_level)`,
+      langParams
+    );
+    const risk_counts = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (const r of countRows) if (r.risk in risk_counts) risk_counts[r.risk] = Number(r.n) || 0;
+
+    const where  = [];
+    const params = [];
+    if (language) { where.push('LOWER(a.language) = LOWER(?)'); params.push(language); }
+    if (risk)     { where.push('LOWER(a.risk_level) = ?');      params.push(risk); }
+    const [rows] = await db.query(
+      `SELECT a.id, u.username, a.language, a.total_lines,
+              a.issues_found, a.risk_level, a.fusion_score, a.created_at
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY a.created_at DESC
+       LIMIT 100`,
+      params
+    );
+
+    const [langRows] = await db.query(
+      `SELECT LOWER(a.language) AS language, COUNT(*) AS n
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.language IS NOT NULL AND a.language <> ''
+       GROUP BY LOWER(a.language)
+       ORDER BY n DESC, language ASC`
+    );
+
+    const total = risk
+      ? risk_counts[risk]
+      : Object.values(risk_counts).reduce((s, n) => s + n, 0);
+
+    res.json({
+      analyses: rows,
+      total,
+      risk_counts,
+      languages: langRows.map(r => ({ language: r.language, count: Number(r.n) || 0 })),
+      filters: { risk, language }
+    });
   } catch (err) {
+    console.error('/admin/analyses error:', err.message);
     res.status(500).json({ error: 'Could not fetch analyses.' });
   }
 });

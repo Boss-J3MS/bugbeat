@@ -2282,6 +2282,7 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 [data-tip][data-tip-pos="up"]:hover::after,
 [data-tip][data-tip-pos="up"]:focus-within::after { transform: none; }
 .cb-tip:focus-within::after { opacity: 1; transform: none; }
+<<<<<<< HEAD
 
 /* "Forgot your current password?" in the Change password window */
 .cb-pwfield__link {
@@ -2297,3 +2298,5 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 }
 .cb-pwfield__link:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 2px; }
 .cb-pwfield__link:disabled { color: var(--text-muted); cursor: default; }
+=======
+>>>>>>> e080c2ed984543e6269c93b65e509939fa221797

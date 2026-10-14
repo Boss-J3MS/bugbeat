@@ -153,7 +153,7 @@ function renderHistoryList() {
       <div class="cb-history-card ${s.id === activeHistoryId ? 'active' : ''}"
            data-id="${s.id}" onclick="selectHistorySession(${s.id})">
         <div class="cb-history-card__top">
-          <span class="cb-lang-badge cb-lang-badge--${langClass}">${s.language || 'Unknown'}</span>
+          <span class="cb-lang-badge cb-lang-badge--${langClass}">${langName(s.language)}</span>
           <span class="cb-history-card__time">${formatHistoryDate(s.created_at)}</span>
         </div>
         <div class="cb-history-card__risk-row">
@@ -378,10 +378,20 @@ function sevColor(sev) {
   return map[sev] || '#6b7180';
 }
 
+// Readable language name for the badges ('cpp' → 'C++').
+function langName(lang) {
+  const names = {
+    javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript', java: 'Java',
+    c: 'C', cpp: 'C++', kotlin: 'Kotlin', php: 'PHP', rust: 'Rust', go: 'Go'
+  };
+  const key = String(lang || '').toLowerCase();
+  return names[key] || lang || 'Unknown';
+}
+
 function getLangClass(lang) {
   const map = {
     python: 'py', javascript: 'js', typescript: 'ts',
-    java: 'java', 'c++': 'cpp', cpp: 'cpp',
+    java: 'java', 'c++': 'cpp', cpp: 'cpp', c: 'c', kotlin: 'kotlin',
     rust: 'rust', go: 'go', php: 'php'
   };
   return map[(lang || '').toLowerCase()] || 'default';

@@ -238,6 +238,8 @@
 .cb-lang-badge--cpp     { background: rgba(85,73,136,0.15);  color: #a090d8; border-color: rgba(85,73,136,0.3); }
 .cb-lang-badge--rust    { background: rgba(183,65,14,0.15);  color: #e0855a; border-color: rgba(183,65,14,0.3); }
 .cb-lang-badge--go      { background: rgba(0,173,216,0.1);   color: #5ec8e8; border-color: rgba(0,173,216,0.25); }
+.cb-lang-badge--c       { background: rgba(85,85,85,0.18);   color: #a8b9cc; border-color: rgba(168,185,204,0.3); }
+.cb-lang-badge--kotlin  { background: rgba(127,82,255,0.14); color: #b39cff; border-color: rgba(127,82,255,0.3); }
 .cb-lang-badge--php     { background: rgba(119,118,152,0.15);color: #b0b0d0; border-color: rgba(119,118,152,0.3); }
 .cb-lang-badge--default { background: var(--bg-input);        color: var(--text-muted); border-color: var(--border); }
 
