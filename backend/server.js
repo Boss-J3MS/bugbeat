@@ -2262,14 +2262,44 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
     const [[issuesCount]]   = await db.query('SELECT SUM(issues_found) as count FROM analyses');
     const [[avgScore]]      = await db.query('SELECT AVG(fusion_score) as avg FROM analyses');
     const [riskBreakdown]   = await db.query(
-      'SELECT risk_level, COUNT(*) as count FROM analyses GROUP BY risk_level'
+      'SELECT LOWER(risk_level) AS risk_level, COUNT(*) as count FROM analyses GROUP BY LOWER(risk_level)'
     );
     const [langBreakdown]   = await db.query(
-      'SELECT language, COUNT(*) as count FROM analyses GROUP BY language ORDER BY count DESC LIMIT 5'
+      `SELECT LOWER(language) AS language, COUNT(*) as count FROM analyses
+       WHERE language IS NOT NULL AND language <> ''
+       GROUP BY LOWER(language) ORDER BY count DESC LIMIT 5`
     );
     const [recentUsers]     = await db.query(
       'SELECT id, username, email, role, created_at, last_login FROM users ORDER BY created_at DESC LIMIT 5'
     );
+
+    // The last 7 days, for the "+N this week" lines.
+    const [[weekUsers]]    = await db.query(
+      'SELECT COUNT(*) AS count FROM users WHERE created_at >= NOW() - INTERVAL 7 DAY'
+    );
+    const [[weekAnalyses]] = await db.query(
+      `SELECT COUNT(*) AS count, COALESCE(SUM(issues_found), 0) AS issues, AVG(fusion_score) AS avg
+       FROM analyses WHERE created_at >= NOW() - INTERVAL 7 DAY`
+    );
+
+    // Latest analyses for the overview list.
+    const [recentAnalyses] = await db.query(
+      `SELECT a.id, u.username, a.language, a.issues_found, a.risk_level, a.fusion_score, a.created_at
+       FROM analyses a JOIN users u ON u.id = a.user_id
+       ORDER BY a.created_at DESC LIMIT 6`
+    );
+
+    // Bug reports that still need attention (null if the table is missing).
+    let bugReports = null;
+    try {
+      const [bugRows] = await db.query(
+        "SELECT status, COUNT(*) AS count FROM bug_reports WHERE status IN ('open', 'in_progress') GROUP BY status"
+      );
+      bugReports = { open: 0, in_progress: 0 };
+      for (const r of bugRows) bugReports[r.status] = Number(r.count) || 0;
+    } catch (e) {
+      if (e.code !== 'ER_NO_SUCH_TABLE') throw e;
+    }
 
     res.json({
       totals: {
@@ -2278,9 +2308,17 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
         issues_found : issuesCount.count || 0,
         avg_score    : round(avgScore.avg || 0, 2)
       },
-      risk_breakdown : riskBreakdown,
-      lang_breakdown : langBreakdown,
-      recent_users   : recentUsers
+      week: {
+        users     : Number(weekUsers.count) || 0,
+        analyses  : Number(weekAnalyses.count) || 0,
+        issues    : Number(weekAnalyses.issues) || 0,
+        avg_score : round(weekAnalyses.avg || 0, 2)
+      },
+      risk_breakdown  : riskBreakdown,
+      lang_breakdown  : langBreakdown,
+      recent_users    : recentUsers,
+      recent_analyses : recentAnalyses,
+      bug_reports     : bugReports
     });
 
   } catch (err) {
