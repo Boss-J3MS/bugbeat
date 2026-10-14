@@ -58,7 +58,3 @@ The backend's main environment variables are listed in `backend/.env.example`. S
 - `BREVO_API_KEY`, `BREVO_SENDER_EMAIL`: send emails such as password resets
 - `PAIZA_API_URL`, `PAIZA_API_KEY`: the code runner (defaults to paiza.io's free guest key)
 - `DB_SSL_CA_PATH`, `DB_SSL_VERIFY`: the database's SSL certificate settings
-
-## Credits
-
-Song tempo/key data for the music search feature is provided by [GetSongBPM.com](https://getsongbpm.com).
