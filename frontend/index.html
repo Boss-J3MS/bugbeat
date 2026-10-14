@@ -24,8 +24,8 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=28" />
-  <link rel="stylesheet" href="history.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=30" />
+  <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/editor/editor.main.min.css" />
@@ -60,26 +60,11 @@
         <option value="python">Python</option>
         <option value="typescript">TypeScript</option>
         <option value="java">Java</option>
+        <option value="c">C</option>
         <option value="cpp">C++</option>
-        <option value="rust">Rust</option>
-        <option value="go">Go</option>
+        <option value="kotlin">Kotlin</option>
+        <option value="php">PHP</option>
       </select>
-      <!-- Music style for the generated music (used when no track is loaded),
-           and an uploaded MP3/WAV backing track that replaces it. -->
-      <select id="style-select" class="cb-select" aria-label="Music style" title="Music style">
-        <option value="lofi">🌙 Lo-fi Chill</option>
-        <option value="jazz">🎷 Smooth Jazz</option>
-        <option value="rock">🎸 Rock Drive</option>
-        <option value="electronic">🎛️ Electronic Pulse</option>
-        <option value="ambient">🌊 Ambient Calm</option>
-      </select>
-      <div class="cb-audio-upload">
-        <label for="audio-upload" class="cb-btn cb-btn--ghost cb-audio-upload__btn" title="Upload an MP3 or WAV as backing track">
-          🎧 <span id="audio-label">Upload audio</span>
-        </label>
-        <input type="file" id="audio-upload" accept="audio/*" hidden />
-        <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio">✕</button>
-      </div>
       <select id="demo-select" class="cb-select" aria-label="Load demo code">
         <option value="">Load demo…</option>
         <option value="clean">✅ Clean code</option>
@@ -90,16 +75,20 @@
       </select>
       <button id="clear-btn" class="cb-btn cb-btn--ghost">Clear</button>
 
-      <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
-        <span class="cb-btn__icon">▶</span> Analyze
-      </button>
-      <button id="run-btn" class="cb-btn cb-btn--ghost" disabled title="Run the code and show its output">
-        <span class="cb-btn__icon">▶</span> Run
-      </button>
+      <span class="cb-tip" data-tip="Add some code first" data-tip-align="end">
+        <button id="analyze-btn" class="cb-btn cb-btn--primary" disabled>
+          <span class="cb-btn__icon">▶</span> Analyze
+        </button>
+      </span>
+      <span class="cb-tip" data-tip="Add some code first" data-tip-align="end">
+        <button id="run-btn" class="cb-btn cb-btn--ghost" disabled>
+          <span class="cb-btn__icon">▶</span> Run
+        </button>
+      </span>
 
       <div class="cb-notif" id="notif-wrap">
-        <button id="notif-btn" class="cb-btn cb-btn--ghost" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
-          🔔<span id="notif-badge" class="cb-notif__badge" hidden>0</span>
+        <button id="notif-btn" class="cb-btn cb-btn--ghost cb-btn--icon" title="Notifications" aria-label="Notifications" aria-haspopup="true" aria-expanded="false">
+          <svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span id="notif-badge" class="cb-notif__badge" hidden>0</span>
         </button>
         <div id="notif-dropdown" class="cb-notif__dropdown" role="menu" aria-label="Notifications" hidden>
           <div class="cb-notif__header">
@@ -130,6 +119,7 @@
     <div class="cb-menu__section cb-menu__section--tracks">
       <!-- Saved tracks (tracks.js); hidden until the server says saving is on. -->
       <div id="tracks" class="cb-tracks" hidden>
+        <div class="cb-menu__heading">Sound</div>
         <div class="cb-tracks__head">
           <span>My tracks</span>
           <span id="tracks-count" class="cb-tracks__count"></span>
@@ -143,13 +133,13 @@
     <div class="cb-menu__section">
       <div class="cb-menu__heading">Account</div>
       <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
-      <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close>◈ History</button>
-      <button id="settings-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>⚙ Settings</button>
-      <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close>🛡 Admin</button>
-      <button id="tour-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🧭 Take the tour</button>
+      <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg><span>History</span></button>
+      <button id="settings-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
+      <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Admin</span></button>
+      <button id="tour-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polygon points="16.2 7.8 14.1 14.1 7.8 16.2 9.9 9.9 16.2 7.8"/></svg><span>Take the tour</span></button>
       <!-- Opens the bug report form (app.js; keeps its old id). -->
-      <button id="bugreport-fab" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close>🐞 Report a bug</button>
-      <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close>Logout</button>
+      <button id="bugreport-fab" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 19l-3-2M5 19l3-2M20 13h-4M4 13h4M10 4l1 2M14 4l-1 2"/></svg><span>Report a bug</span></button>
+      <button id="logout-btn" class="cb-btn cb-btn--ghost cb-menu__item" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Logout</span></button>
     </div>
   </aside>
   <div id="sidebar-backdrop" class="cb-sidebar__backdrop" hidden></div>
@@ -163,7 +153,14 @@
         <span class="cb-panel__title">Code</span>
         <span id="line-count" class="cb-meta">0 lines</span>
       </div>
-      <div id="monaco-editor" class="cb-monaco"></div>
+      <div class="cb-editor-wrap">
+        <div id="monaco-editor" class="cb-monaco"></div>
+        <!-- Shown while the editor is empty (app.js updateAnalyzeBtn). -->
+        <div id="editor-placeholder" class="cb-editor-placeholder">
+          <span>Paste or type your code here,</span>
+          <span>or <button type="button" id="editor-demo-btn" class="cb-link-btn">try a demo</button> to see how BugBeat works.</span>
+        </div>
+      </div>
     </section>
 
     <!-- PANEL 2: Issues -->
@@ -187,6 +184,7 @@
         <div class="cb-empty-state">
           <span class="cb-empty-state__icon">♪</span>
           <span>Analyze code to detect issues</span>
+          <span class="cb-empty-state__hint">Add some code, then press Analyze.</span>
         </div>
       </div>
     </section>
@@ -222,13 +220,36 @@
         <span id="now-playing-name" class="cb-now-playing__name">—</span>
         <span id="now-playing-kind" class="cb-now-playing__kind"></span>
       </div>
+      <!-- Music style for the generated music (used when no track is loaded),
+           and an uploaded MP3/WAV backing track that replaces it. -->
+      <div class="cb-sound-row">
+        <select id="style-select" class="cb-select cb-sound-row__style" aria-label="Music style" title="Music style">
+          <option value="lofi">🌙 Lo-fi Chill</option>
+          <option value="jazz">🎷 Smooth Jazz</option>
+          <option value="rock">🎸 Rock Drive</option>
+          <option value="electronic">🎛️ Electronic Pulse</option>
+          <option value="ambient">🌊 Ambient Calm</option>
+        </select>
+        <div class="cb-audio-upload">
+          <label for="audio-upload" class="cb-btn cb-btn--ghost cb-audio-upload__btn" title="Upload an MP3 or WAV as backing track">
+            <svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+            <span id="audio-label">Upload audio</span>
+          </label>
+          <input type="file" id="audio-upload" accept="audio/*" hidden />
+          <button id="audio-remove-btn" class="cb-btn cb-btn--ghost cb-btn--danger" hidden title="Remove audio" aria-label="Remove audio">✕</button>
+        </div>
+      </div>
       <div class="cb-playback">
-        <button id="play-btn" class="cb-btn cb-btn--play" aria-label="Play" disabled>▶</button>
-        <button id="stop-btn" class="cb-btn cb-btn--stop" aria-label="Stop" disabled>■</button>
+        <span class="cb-tip" data-tip="Analyze your code first to hear it" data-tip-pos="up">
+          <button id="play-btn" class="cb-btn cb-btn--play" aria-label="Play" disabled>▶</button>
+        </span>
+        <span class="cb-tip" data-tip="Analyze your code first to hear it" data-tip-pos="up">
+          <button id="stop-btn" class="cb-btn cb-btn--stop" aria-label="Stop" disabled>■</button>
+        </span>
         <div class="cb-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <div id="progress-fill" class="cb-progress__fill"></div>
         </div>
-        <span id="current-line" class="cb-meta">—</span>
+        <span id="current-line" class="cb-meta cb-position">Bar 1 · Beat 1</span>
       </div>
       <div class="cb-bpm-row">
         <label class="cb-bpm-label" for="bpm-range">BPM</label>
@@ -503,9 +524,10 @@
                 <option value="python">Python</option>
                 <option value="typescript">TypeScript</option>
                 <option value="java">Java</option>
+                <option value="c">C</option>
                 <option value="cpp">C++</option>
-                <option value="rust">Rust</option>
-                <option value="go">Go</option>
+                <option value="kotlin">Kotlin</option>
+                <option value="php">PHP</option>
               </select>
             </label>
             <div class="cb-set__hint">The language picked when you open BugBeat. Saved on this browser.</div>
@@ -573,6 +595,8 @@
           <input type="password" id="pw-current" autocomplete="current-password" />
           <button type="button" class="cb-pwfield__toggle" data-target="pw-current" aria-label="Show password" aria-pressed="false">Show</button>
         </div>
+        <!-- Emails a password reset link to the account's address (account.js). -->
+        <button type="button" id="pw-forgot-btn" class="cb-pwfield__link">Forgot your current password?</button>
       </div>
       <div class="cb-pwfield">
         <label for="pw-new">New password</label>
@@ -656,18 +680,18 @@
   </script>
 
   <script src="popover.js?v=2"></script>
-  <script src="app.js?v=16"></script>
-  <script src="history.js?v=5"></script>
+  <script src="app.js?v=18"></script>
+  <script src="history.js?v=6"></script>
   <script src="notif-view.js?v=4"></script>
   <script src="banner.js"></script>
-  <script src="tracks.js?v=2"></script>
+  <script src="tracks.js?v=3"></script>
   <script src="theme.js"></script>
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
-  <script src="account.js"></script>
-  <script src="settings.js?v=2"></script>
+  <script src="account.js?v=2"></script>
+  <script src="settings.js?v=3"></script>
   <script src="logout.js?v=2"></script>
-  <script src="tour.js?v=8"></script>
+  <script src="tour.js?v=9"></script>
   <script src="resize.js?v=3"></script>
 
 </body>

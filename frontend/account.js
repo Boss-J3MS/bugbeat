@@ -26,6 +26,8 @@
   // /auth/me each time the window opens; assume yes until we know.
   let hasPassword = true;
   let closeTimer = null;
+  let accountEmail = null;   // from /auth/me, for "Forgot your current password?"
+  const forgotBtn = document.getElementById('pw-forgot-btn');
 
   function showMsg(text, type) {
     msg.textContent = text;
@@ -67,6 +69,7 @@
       });
       if (res.ok) {
         const data = await res.json();
+        if (data.user && data.user.email) accountEmail = data.user.email;
         if (data.user && data.user.has_password === false) {
           setMode(false);
           newIn.focus();
@@ -103,6 +106,46 @@
       btn.setAttribute('aria-label', (show ? 'Hide' : 'Show') + ' password');
     });
   });
+
+  // "Forgot your current password?": emails a reset link to the account's
+  // own address (the same link as the Forgot Password page), without
+  // leaving the app. The backend limits how often this can be used.
+  if (forgotBtn) {
+    forgotBtn.addEventListener('click', async () => {
+      msg.hidden = true;
+      if (!accountEmail) {
+        try {
+          const r = await fetch(`${BACKEND_URL}/auth/me`, { headers: { Authorization: `Bearer ${cbToken}` } });
+          if (r.ok) accountEmail = (await r.json()).user?.email || null;
+        } catch (err) { /* handled below */ }
+      }
+      if (!accountEmail) {
+        return showMsg('Could not find the email address of your account. Please try again.', 'error');
+      }
+      forgotBtn.disabled = true;
+      const label = forgotBtn.textContent;
+      forgotBtn.textContent = 'Sending…';
+      try {
+        const res = await fetch(`${BACKEND_URL}/auth/forgot-password`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: accountEmail })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not send the reset link. Please try again.');
+        showMsg(`We sent a password reset link to ${accountEmail}. Open it to set a new password.`, 'success');
+        // Avoid repeated emails: allow another request after a minute.
+        forgotBtn.textContent = 'Link sent';
+        setTimeout(() => { forgotBtn.disabled = false; forgotBtn.textContent = label; }, 60000);
+      } catch (err) {
+        showMsg(err.message === 'Failed to fetch'
+          ? 'Could not reach the server. Please try again.'
+          : err.message, 'error');
+        forgotBtn.disabled = false;
+        forgotBtn.textContent = label;
+      }
+    });
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
