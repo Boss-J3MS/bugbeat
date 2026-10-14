@@ -374,12 +374,14 @@ function setCode(code, lang = 'javascript') {
 // Display names for the language list values.
 const LANG_LABELS = {
   javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
-  java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+  java: 'Java', c: 'C', cpp: 'C++', kotlin: 'Kotlin', php: 'PHP'
 };
 
 function getMonacoLang(lang) {
   const map = { javascript: 'javascript', python: 'python', typescript: 'typescript',
-                java: 'java', cpp: 'cpp', rust: 'rust', go: 'go', auto: 'javascript' };
+                java: 'java', c: 'c', cpp: 'cpp', kotlin: 'kotlin', php: 'php',
+                // no longer in the list, but older History sessions may use them
+                rust: 'rust', go: 'go', auto: 'javascript' };
   return map[lang] || 'javascript';
 }
 
@@ -1282,7 +1284,7 @@ async function analyzeWithBackend(code, lang) {
 // ═══════════════════════════════════════════════
 // TypeScript isn't offered by paiza.io's guest runner, so it's left out
 // here (and on the backend) — Run shows a specific message for it below.
-const RUNNABLE_LANGS = new Set(['javascript', 'python', 'java', 'cpp', 'rust', 'go']);
+const RUNNABLE_LANGS = new Set(['javascript', 'python', 'java', 'c', 'cpp', 'kotlin', 'php']);
 
 function escOutputHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({

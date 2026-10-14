@@ -363,7 +363,7 @@ app.post('/analyze', async (req, res) => {
   // treated as Auto-detect.
   const LANG_NAMES = {
     javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
-    java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+    java: 'Java', c: 'C', cpp: 'C++', kotlin: 'Kotlin', php: 'PHP'
   };
   const langName   = LANG_NAMES[lang] || null;          // null = Auto-detect
   const langLabel  = langName ? `${langName} ` : '';
@@ -378,7 +378,7 @@ app.post('/analyze', async (req, res) => {
 Do NOT guess or switch to another language. If a line is not valid ${langName} (for example, it is written in a different programming language), mark it "error" (or "critical" if the code cannot run at all) with a message like "Not valid ${langName} syntax", and in the suggestion explain how to write it in ${langName} or to choose the correct language.
 Set "language" to "${lang}".`
     : `The user chose Auto-detect. First work out which programming language the code is written in, then analyze it as that language.
-Set "language" to one of: "javascript", "python", "typescript", "java", "cpp", "rust", "go", or "other".`;
+Set "language" to one of: "javascript", "python", "typescript", "java", "c", "cpp", "kotlin", "php", or "other".`;
 
   const prompt = `You are a code analysis engine. Analyze every line of the following ${langLabel}code.
 
@@ -2121,9 +2121,10 @@ const PAIZA_LANGUAGE_IDS = {
   javascript: 'javascript',
   python:     'python3',
   java:       'java',
+  c:          'c',
   cpp:        'cpp',
-  rust:       'rust',
-  go:         'go',
+  kotlin:     'kotlin',
+  php:        'php',
 };
 
 // paiza.io's guest key has no documented quota, but this still gets its
@@ -2141,7 +2142,7 @@ function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── POST /execute ───────────────────────────────
 app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
-  const code  = String(req.body?.code  || '');
+  let   code  = String(req.body?.code  || '');
   const lang  = String(req.body?.lang  || '');
   const stdin = String(req.body?.stdin || '');
   const paizaLang = PAIZA_LANGUAGE_IDS[lang];
@@ -2159,6 +2160,10 @@ app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
         : 'Pick a specific language (not Auto-detect) before running.'
     });
   }
+
+  // PHP only runs what comes after an opening <?php tag; without one it
+  // just prints the code back. Add it when the student left it out.
+  if (lang === 'php' && !/<\?(php|=)/i.test(code)) code = `<?php\n${code}`;
 
   try {
     const createRes = await fetch(`${PAIZA_API_URL}/runners/create`, {
@@ -2183,11 +2188,11 @@ app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
     }
 
     // paiza.io's run is async — poll get_details until status flips to
-    // "completed". Its own execution cap is only ~2s, so a handful of
-    // short polls is plenty; this just bounds total wait time.
+    // "completed". Running takes at most ~2s, but compiling can take
+    // several seconds more (Kotlin especially), so wait up to ~20s.
     let result = null;
-    for (let i = 0; i < 10; i++) {
-      await sleep(700);
+    for (let i = 0; i < 25; i++) {
+      await sleep(800);
       const detailsRes = await fetch(
         `${PAIZA_API_URL}/runners/get_details?id=${encodeURIComponent(created.id)}&api_key=${PAIZA_API_KEY}`
       );
