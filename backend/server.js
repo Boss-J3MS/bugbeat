@@ -2530,18 +2530,70 @@ app.post('/auth/admin-invite/accept', requireAuth, authLimiter, async (req, res)
 });
 
 // ── GET /admin/analyses ────────────────────────
+// Optional filters: ?risk=low|medium|high|critical and ?language=python.
+// Filtering happens here, so it covers every analysis and not only the
+// latest 100 that are listed. Also returns, for the filter controls:
+//   risk_counts — how many analyses per risk level (language filter applied)
+//   languages   — every language that has analyses, with its count
+//   total       — how many analyses match both filters
+const ANALYSIS_RISKS = ['low', 'medium', 'high', 'critical'];
 app.get('/admin/analyses', requireAdmin, async (req, res) => {
+  const riskQ = typeof req.query.risk === 'string' ? req.query.risk.trim().toLowerCase() : '';
+  const langQ = typeof req.query.language === 'string' ? req.query.language.trim().slice(0, 50) : '';
+  const risk = ANALYSIS_RISKS.includes(riskQ) ? riskQ : null;
+  const language = langQ || null;
   try {
-    const [rows] = await db.query(`
-      SELECT a.id, u.username, a.language, a.total_lines,
-             a.issues_found, a.risk_level, a.fusion_score, a.created_at
-      FROM analyses a
-      JOIN users u ON u.id = a.user_id
-      ORDER BY a.created_at DESC
-      LIMIT 100
-    `);
-    res.json({ analyses: rows });
+    const langWhere  = language ? 'WHERE LOWER(a.language) = LOWER(?)' : '';
+    const langParams = language ? [language] : [];
+
+    const [countRows] = await db.query(
+      `SELECT LOWER(a.risk_level) AS risk, COUNT(*) AS n
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       ${langWhere}
+       GROUP BY LOWER(a.risk_level)`,
+      langParams
+    );
+    const risk_counts = { low: 0, medium: 0, high: 0, critical: 0 };
+    for (const r of countRows) if (r.risk in risk_counts) risk_counts[r.risk] = Number(r.n) || 0;
+
+    const where  = [];
+    const params = [];
+    if (language) { where.push('LOWER(a.language) = LOWER(?)'); params.push(language); }
+    if (risk)     { where.push('LOWER(a.risk_level) = ?');      params.push(risk); }
+    const [rows] = await db.query(
+      `SELECT a.id, u.username, a.language, a.total_lines,
+              a.issues_found, a.risk_level, a.fusion_score, a.created_at
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+       ORDER BY a.created_at DESC
+       LIMIT 100`,
+      params
+    );
+
+    const [langRows] = await db.query(
+      `SELECT LOWER(a.language) AS language, COUNT(*) AS n
+       FROM analyses a
+       JOIN users u ON u.id = a.user_id
+       WHERE a.language IS NOT NULL AND a.language <> ''
+       GROUP BY LOWER(a.language)
+       ORDER BY n DESC, language ASC`
+    );
+
+    const total = risk
+      ? risk_counts[risk]
+      : Object.values(risk_counts).reduce((s, n) => s + n, 0);
+
+    res.json({
+      analyses: rows,
+      total,
+      risk_counts,
+      languages: langRows.map(r => ({ language: r.language, count: Number(r.n) || 0 })),
+      filters: { risk, language }
+    });
   } catch (err) {
+    console.error('/admin/analyses error:', err.message);
     res.status(500).json({ error: 'Could not fetch analyses.' });
   }
 });

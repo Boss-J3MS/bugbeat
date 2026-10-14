@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=7" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=7" />
+  <link rel="stylesheet" href="admin.css?v=8" />
 </head>
 <body>
 
@@ -114,6 +114,26 @@
     <!-- ── ANALYSES TAB ──────────────────────── -->
     <div id="tab-analyses" class="admin-tab">
       <h2 class="admin-section-title">Recent Analyses</h2>
+      <!-- Filters (counts and the language list are filled in by loadAnalyses). -->
+      <div class="admin-toolbar">
+        <div class="admin-filter" id="analysis-risk-filter" role="tablist" aria-label="Filter analyses by risk level">
+          <button type="button" class="admin-filter__btn is-active" data-risk="" role="tab" aria-selected="true">All <span class="admin-filter__count" data-count="all">0</span></button>
+          <button type="button" class="admin-filter__btn" data-risk="low" role="tab" aria-selected="false">Low <span class="admin-filter__count" data-count="low">0</span></button>
+          <button type="button" class="admin-filter__btn" data-risk="medium" role="tab" aria-selected="false">Medium <span class="admin-filter__count" data-count="medium">0</span></button>
+          <button type="button" class="admin-filter__btn" data-risk="high" role="tab" aria-selected="false">High <span class="admin-filter__count" data-count="high">0</span></button>
+          <button type="button" class="admin-filter__btn" data-risk="critical" role="tab" aria-selected="false">Critical <span class="admin-filter__count" data-count="critical">0</span></button>
+        </div>
+        <label class="admin-lang-filter">
+          <span>Language</span>
+          <select id="analysis-lang-filter" class="cb-select">
+            <option value="">All languages</option>
+          </select>
+        </label>
+      </div>
+      <div class="admin-filter-summary" aria-live="polite">
+        <span id="analyses-summary"></span>
+        <button type="button" id="analyses-clear" class="admin-link-btn" hidden>Clear filters</button>
+      </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
           <thead>
@@ -621,29 +641,116 @@
     }
 
     // ── Load analyses ──────────────────────────
+    // Filter by risk level (chips) and language (dropdown). The backend
+    // does the filtering, so it covers all analyses, not just the latest
+    // 100 shown in the table.
+    const ANALYSIS_LANG_NAMES = {
+      javascript: 'JavaScript', python: 'Python', typescript: 'TypeScript',
+      java: 'Java', cpp: 'C++', rust: 'Rust', go: 'Go'
+    };
+    function analysisLangLabel(l) {
+      const s = String(l ?? '').trim();
+      return ANALYSIS_LANG_NAMES[s.toLowerCase()] || s || '—';
+    }
+    let analysisRisk  = '';    // '' = all
+    let analysisLang  = '';    // '' = all
+    let analysesToken = 0;     // ignores an older response after the filters change
+
     async function loadAnalyses() {
+      const token = ++analysesToken;
+      const qs = new URLSearchParams();
+      if (analysisRisk) qs.set('risk', analysisRisk);
+      if (analysisLang) qs.set('language', analysisLang);
+      document.getElementById('analyses-tbody').classList.add('admin-loading');
       let data;
       try {
-        data = await adminFetch('/admin/analyses');
+        data = await adminFetch('/admin/analyses' + (qs.toString() ? `?${qs}` : ''));
       } catch (err) {
+        if (token !== analysesToken) return;
+        document.getElementById('analyses-tbody').classList.remove('admin-loading');
         document.getElementById('analyses-tbody').innerHTML = loadingRow(8);
         loadFailed('analyses', err);
         return;
       }
+      if (token !== analysesToken) return;
       loadSucceeded('analyses');
+      document.getElementById('analyses-tbody').classList.remove('admin-loading');
+      renderAnalysisFilters(data);
+      const filtered = !!(analysisRisk || analysisLang);
+      const empty = filtered ? 'No analyses match these filters' : 'No analyses yet';
       const riskColors = { low: '#3b9e5e', medium: '#d9921e', high: '#d45a30', critical: '#d43c3c' };
       document.getElementById('analyses-tbody').innerHTML = (data.analyses || []).map(a => `
         <tr>
           <td>${esc(a.id)}</td>
           <td>${esc(a.username)}</td>
-          <td>${esc(a.language)}</td>
+          <td>${esc(analysisLangLabel(a.language))}</td>
           <td>${esc(a.total_lines)}</td>
           <td>${esc(a.issues_found)}</td>
           <td><span style="color:${riskColors[a.risk_level?.toLowerCase()] || '#fff'}">${esc(riskLabel(a.risk_level))}</span></td>
           <td>${esc(a.fusion_score)}</td>
           <td>${formatDate(a.created_at)}</td>
-        </tr>`).join('') || '<tr><td colspan="8" class="admin-empty">No analyses yet</td></tr>';
+        </tr>`).join('') || `<tr><td colspan="8" class="admin-empty">${empty}</td></tr>`;
     }
+
+    // Counts on the risk chips, the language list, and the summary line.
+    function renderAnalysisFilters(data) {
+      const counts = data.risk_counts || {};
+      const all = ['low', 'medium', 'high', 'critical'].reduce((s, k) => s + (Number(counts[k]) || 0), 0);
+      document.querySelectorAll('#analysis-risk-filter [data-count]').forEach(el => {
+        el.textContent = el.dataset.count === 'all' ? all : (Number(counts[el.dataset.count]) || 0);
+      });
+      document.querySelectorAll('#analysis-risk-filter [data-risk]').forEach(b => {
+        const on = b.dataset.risk === analysisRisk;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+
+      const sel = document.getElementById('analysis-lang-filter');
+      const langs = Array.isArray(data.languages) ? data.languages.slice() : [];
+      // Keep the chosen language in the list even if it has no analyses now.
+      if (analysisLang && !langs.some(l => l.language === analysisLang)) {
+        langs.push({ language: analysisLang, count: 0 });
+      }
+      sel.innerHTML = '<option value="">All languages</option>' + langs.map(l =>
+        `<option value="${esc(l.language)}">${esc(analysisLangLabel(l.language))} (${esc(l.count)})</option>`
+      ).join('');
+      sel.value = analysisLang;
+
+      const shown = (data.analyses || []).length;
+      const total = Number(data.total) || 0;
+      const parts = [];
+      if (analysisRisk) parts.push(`${riskLabel(analysisRisk)} risk`);
+      if (analysisLang) parts.push(analysisLangLabel(analysisLang));
+      let text = total > shown
+        ? `Showing the latest ${shown} of ${total} analyses`
+        : `${total} ${total === 1 ? 'analysis' : 'analyses'}`;
+      if (parts.length) text += ` · ${parts.join(' · ')}`;
+      document.getElementById('analyses-summary').textContent = text;
+      document.getElementById('analyses-clear').hidden = !parts.length;
+    }
+
+    document.getElementById('analysis-risk-filter').addEventListener('click', e => {
+      const btn = e.target.closest('[data-risk]');
+      if (!btn || btn.dataset.risk === analysisRisk) return;
+      analysisRisk = btn.dataset.risk;
+      document.querySelectorAll('#analysis-risk-filter [data-risk]').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      loadAnalyses();
+    });
+
+    document.getElementById('analysis-lang-filter').addEventListener('change', e => {
+      analysisLang = e.target.value;
+      loadAnalyses();
+    });
+
+    document.getElementById('analyses-clear').addEventListener('click', () => {
+      analysisRisk = '';
+      analysisLang = '';
+      loadAnalyses();
+    });
 
     // ── Load bug reports ───────────────────────
     // Each report has a status the team updates as they work on it:
