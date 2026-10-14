@@ -24,6 +24,9 @@
 }
 
 .admin-nav__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
   font-family: var(--font-ui);
   font-size: 0.78rem;
   font-weight: 500;
@@ -74,10 +77,11 @@
 /* ── Stat cards ───────────────────────────────── */
 .admin-stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 12px;
   margin-bottom: 1.5rem;
 }
+@media (max-width: 1000px) { .admin-stats-grid { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 700px) { .admin-stats-grid { grid-template-columns: 1fr 1fr; } }
 
 .admin-stat-card {
@@ -479,4 +483,103 @@
 @media (max-width: 480px) {
   .admin-lang-filter { width: 100%; }
   .admin-lang-filter .cb-select { flex: 1; min-width: 0; }
+}
+
+/* ═══════════════════════════════════════════════
+   Overview polish (Oct 2026)
+═══════════════════════════════════════════════ */
+.admin-nav__btn .cb-ico { width: 15px; height: 15px; }
+
+/* Person icon before the admin's name (no emoji). */
+.admin-user { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text); }
+.admin-user:empty { display: none; }
+.admin-user::before {
+  content: '';
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+/* Stat cards: "this week" line, and the clickable bug reports card. */
+.admin-stat-card { display: flex; flex-direction: column; align-items: center; gap: 0; }
+.admin-stat-card__sub {
+  margin-top: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+.admin-stat-card--link {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s;
+}
+.admin-stat-card--link:hover { border-color: var(--accent); }
+.admin-stat-card--link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.admin-stat-card__num--alert { color: var(--critical); }
+
+/* Bars under the risk / language rows. */
+.admin-bar-row { display: flex; flex-direction: column; gap: 4px; }
+.admin-bar { height: 5px; background: var(--bg-input); border-radius: 99px; overflow: hidden; }
+.admin-bar__fill { height: 100%; background: var(--accent); border-radius: 99px; transition: width 0.3s; }
+.admin-breakdown__pct { color: var(--text-muted); font-weight: 400; margin-left: 0.25rem; }
+.admin-breakdown { gap: 10px; }
+
+/* Recent users rows are buttons (open the user in Users). */
+.admin-row-link {
+  width: 100%;
+  padding: 0.25rem 0.35rem;
+  margin: -0.25rem -0.35rem;
+  box-sizing: content-box;
+  background: none;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-row-link:hover { background: var(--bg-input); }
+.admin-row-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.admin-recent-user { display: flex; flex-direction: column; min-width: 0; }
+.admin-recent-user__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-recent-user__when { font-size: 0.7rem; color: var(--text-muted); }
+
+/* Latest analyses (full width under the three cards). */
+.admin-card--latest { margin-top: 12px; }
+.admin-card__head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.admin-card__head .admin-link-btn { font-size: 0.78rem; }
+.admin-latest { display: flex; flex-direction: column; }
+.admin-latest__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.admin-latest__row:first-child { border-top: 0; }
+.admin-latest__user { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-latest__lang, .admin-latest__issues, .admin-latest__when { color: var(--text-muted); }
+.admin-latest__risk { font-weight: 600; }
+.admin-latest__when { text-align: right; }
+@media (max-width: 700px) {
+  .admin-latest__row { grid-template-columns: 1fr auto; row-gap: 0.15rem; }
+  .admin-latest__lang, .admin-latest__issues { font-size: 0.75rem; }
+  .admin-latest__when { text-align: right; }
+}
+
+#stat-avg-week { display: flex; flex-direction: column; align-items: center; gap: 0.1rem; }
+.admin-nav__btn { white-space: nowrap; }
+@media (max-width: 768px) {
+  /* The tabs wrap onto two lines instead of pushing the page sideways. */
+  .admin-nav { flex-wrap: wrap; row-gap: 4px; }
+}
+@media (max-width: 700px) {
+  /* Five cards in two columns: the last one takes the whole row. */
+  .admin-stat-card--link { grid-column: 1 / -1; }
 }
