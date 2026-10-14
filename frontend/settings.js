@@ -49,7 +49,7 @@
   function updateGreeting(u) {
     const g = $('user-greeting');
     if (g && u) {
-      g.textContent = `👤 ${displayName(u)}`;
+      g.textContent = displayName(u);
       g.title = u.nickname ? `${u.nickname} (@${u.username})` : u.username;
     }
   }

@@ -43,7 +43,7 @@
 
     // ── Music ──
     { target: '#style-select', title: 'Choose the music',
-      text: 'Pick the style of the generated music: Lo-fi, Jazz, Rock, Electronic or Ambient.' },
+      text: 'Pick the style of the generated music, right here in the Playback panel: Lo-fi, Jazz, Rock, Electronic or Ambient.' },
     { target: '.cb-audio-upload', title: 'Use your own song',
       text: 'Upload an MP3 or WAV to hear your code through your own music. Press ✕ beside it to go back to the generated music.' },
 

@@ -44,7 +44,7 @@ if (!cbToken || !cbUser) {
 const userGreeting = document.getElementById('user-greeting');
 const logoutBtn    = document.getElementById('logout-btn');
 
-if (userGreeting) userGreeting.textContent = `👤 ${cbUser?.username || ''}`;
+if (userGreeting) userGreeting.textContent = cbUser?.username || '';
 
 // Show admin link only for admins
 const adminLink = document.getElementById('admin-link');
@@ -813,6 +813,8 @@ function updateNowPlaying() {
     nameEl.title = label;
     kindEl.textContent = 'Generated';
   }
+  // The stopped position depends on the source (song time or bars).
+  if (!isPlaying && currentLine) currentLine.textContent = idlePositionLabel();
 }
 
 // ── Notice pop-up ──────────────────────────────
@@ -1173,8 +1175,15 @@ function stopPositionDisplay(reset = true) {
   positionTimer = null;
   if (reset) {
     lastProgress = 0;
-    setProgress(0, '—');
+    setProgress(0, idlePositionLabel());
   }
+}
+
+// What the position shows while stopped: the start of the uploaded
+// song (with its length), or the first beat of the generated music.
+function idlePositionLabel() {
+  if (audioBuffer) return `0:00 / ${formatTime(audioBuffer.duration || 0)}`;
+  return 'Bar 1 · Beat 1';
 }
 
 playBtn.addEventListener('click', async () => {
@@ -1620,7 +1629,29 @@ function updateAnalyzeBtn() {
   const empty = getCode().trim().length === 0;
   analyzeBtn.disabled = empty;
   if (runBtn) runBtn.disabled = empty;
+  // Hover tips say why a button can't be pressed yet.
+  setTip(analyzeBtn, empty ? 'Add some code first' : 'Check your code for issues');
+  if (runBtn) setTip(runBtn, empty ? 'Add some code first' : 'Run the code and show its output');
+  // Hint over the empty editor. Only a truly empty editor counts, so a
+  // few blank lines still hide it (the hint would sit on top of them).
+  const placeholder = document.getElementById('editor-placeholder');
+  if (placeholder) placeholder.hidden = getCode().length > 0;
 }
+
+// Sets the hover tip of a button. The tip lives on the button's .cb-tip
+// wrapper: a disabled button is faded out, which would fade the tip too.
+function setTip(btn, text) {
+  const wrap = btn?.closest('.cb-tip');
+  if (wrap) wrap.dataset.tip = text;
+}
+
+// "try a demo" link in the empty editor: loads the mixed demo.
+document.getElementById('editor-demo-btn')?.addEventListener('click', () => {
+  if (!demoSelect) return;
+  demoSelect.value = 'mixed';
+  demoSelect.dispatchEvent(new Event('change'));
+  monacoEditor?.focus();
+});
 
 if (clearBtn) {
   clearBtn.addEventListener('click', () => {
@@ -1759,6 +1790,8 @@ function renderSequencer(lines) {
 
   playBtn.disabled = false;
   stopBtn.disabled = false;
+  setTip(playBtn, 'Play / pause');
+  setTip(stopBtn, 'Stop and go back to the start');
 }
 
 // ── Waveform pulse ─────────────────────────────
@@ -2020,6 +2053,14 @@ require(['vs/editor/editor.main'], function () {
   });
 
   // Update line count + analyze button on content change
+  // Line the empty-editor hint up with where the code starts.
+  const placeLineUp = () => {
+    const ph = document.getElementById('editor-placeholder');
+    if (ph) ph.style.left = `${monacoEditor.getLayoutInfo().contentLeft + 2}px`;
+  };
+  placeLineUp();
+  monacoEditor.onDidLayoutChange(placeLineUp);
+
   monacoEditor.onDidChangeModelContent(() => {
     const lines = monacoEditor.getModel().getLineCount();
     lineCount.textContent = `${lines} line${lines !== 1 ? 's' : ''}`;

@@ -11,7 +11,7 @@
   --bg-input:    #1a1d24;
   --border:      #2a2e38;
   --text:        #e8eaf0;
-  --text-muted:  #6b7180;
+  --text-muted:  #8a909f;
   --accent:      #1de4a8;
   --accent-hover: #25ffbe;
   --on-accent:   #000;
@@ -49,7 +49,7 @@
   --bg-input:    #edeff3;
   --border:      #d7dbe2;
   --text:        #1b1e24;
-  --text-muted:  #6a7180;
+  --text-muted:  #5f6676;
   --accent:      #0ea472;
   --accent-hover: #0c8f63;
   --on-accent:   #ffffff;
@@ -110,7 +110,7 @@
   --bg-input:    #ede5d5;
   --border:      #d9cdb6;
   --text:        #2b2418;
-  --text-muted:  #75684f;
+  --text-muted:  #6b5e46;
   --accent:      #a85a14;
   --accent-hover: #8f4b0f;
   --on-accent:   #ffffff;
@@ -1396,7 +1396,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   padding: 2rem 1rem;
   text-align: center;
 }
-.cb-empty-state__icon { font-size: 1.5rem; opacity: 0.3; }
+.cb-empty-state__icon { font-size: 1.5rem; opacity: 0.45; }
 
 /* ── Scrollbar styling ───────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
@@ -1662,6 +1662,11 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
      panels spilled out below it), so the padding lands after the last
      panel. */
   .cb-workspace { flex: none; }
+  /* Same idea one level up: .cb-layout (sidebar + workspace) has
+     flex:1, i.e. a zero starting height, which squeezed the stacked
+     panels into one screen and left the Playback panel 1px tall. Start
+     from the content height instead so the page simply scrolls. */
+  .cb-layout { flex: 1 0 auto; }
 }
 
 /* ═══════════════════════════════════════════════
@@ -1856,7 +1861,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 }
 
 /* My tracks: limits line + highlight when opened from the "full" pop-up */
-.cb-tracks__limits { font-size: 0.65rem; color: var(--text-muted); margin-top: -0.2rem; }
+.cb-tracks__limits { font-size: 0.7rem; color: var(--text-muted); margin-top: -0.2rem; }
 .cb-tracks--flash { animation: cb-tracks-flash 1.6s ease; border-radius: var(--radius-sm); }
 @keyframes cb-tracks-flash {
   0%, 60% { box-shadow: 0 0 0 2px var(--accent); }
@@ -2147,3 +2152,133 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
   .cb-set__facts { grid-template-columns: 1fr; }
   .cb-set__row { flex-direction: column; align-items: stretch; }
 }
+
+/* ═══════════════════════════════════════════════
+   UI polish (Oct 2026)
+═══════════════════════════════════════════════ */
+
+/* ── Line icons (sidebar, bell, upload, delete) ── */
+.cb-ico {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.cb-menu__item { gap: 0.6rem; }
+.cb-menu__item .cb-ico { opacity: 0.85; }
+.cb-menu__item:hover .cb-ico { opacity: 1; }
+
+/* Person icon before the name in the sidebar. */
+.cb-menu__user {
+  display: block;
+  max-width: 100%;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cb-menu__user::before {
+  content: '';
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 0.45rem;
+  width: 15px;
+  height: 15px;
+  background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2'/%3E%3Ccircle cx='12' cy='7' r='4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.cb-menu__user:empty::before { display: none; }
+
+/* ── Buttons: one focus style for all of them ──
+   Without this the browser drew its own white ring (most visible on the
+   bell after its dropdown or the notifications window closed). */
+.cb-btn:focus { outline: none; }
+.cb-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cb-btn--icon { width: 34px; padding: 0; justify-content: center; }
+#notif-btn[aria-expanded="true"] { color: var(--accent); border-color: var(--accent); }
+
+/* ── Sound controls (Playback panel) ── */
+.cb-sound-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+.cb-sound-row__style { flex: 1 1 auto; min-width: 0; }
+.cb-sound-row .cb-audio-upload { flex: 0 1 auto; min-width: 0; }
+.cb-sound-row .cb-audio-upload__btn { max-width: 170px; }
+.cb-audio-upload__btn .cb-ico { width: 15px; height: 15px; }
+
+/* ── Position (time or bar/beat) beside the progress bar ── */
+.cb-position {
+  flex-shrink: 0;
+  min-width: 6.5em;
+  padding-right: 0.15rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── Delete button on a saved track ── */
+.cb-track__del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cb-track__del .cb-ico { width: 15px; height: 15px; }
+
+/* ── Empty editor hint ── */
+.cb-editor-wrap {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+.cb-editor-placeholder {
+  position: absolute;
+  top: 12px;                  /* Monaco's top padding */
+  left: 64px;                 /* replaced with the real code start by app.js */
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-family: var(--font-code);
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  pointer-events: none;       /* clicks go through to the editor… */
+  z-index: 2;
+}
+.cb-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  pointer-events: auto;       /* …except the demo link */
+}
+.cb-link-btn:hover { color: var(--accent-hover); }
+.cb-link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+.cb-empty-state__hint { font-size: 0.72rem; }
+
+/* ── Hover tips on buttons that can be disabled ──
+   The tip sits on a wrapper (.cb-tip): a disabled button is faded with
+   opacity, which would fade a tip drawn on the button itself. */
+.cb-tip { display: inline-flex; }
+[data-tip][data-tip-align="end"]::after { left: auto; right: 0; }
+[data-tip][data-tip-pos="up"]::after {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform: translateY(3px);
+}
+[data-tip][data-tip-pos="up"]:hover::after,
+[data-tip][data-tip-pos="up"]:focus-within::after { transform: none; }
+.cb-tip:focus-within::after { opacity: 1; transform: none; }
