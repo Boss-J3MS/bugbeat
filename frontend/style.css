@@ -390,7 +390,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   grid-template-columns: var(--split-cols, minmax(0, 0.7fr) minmax(0, 0.3fr));
   /* Three rows: the Playback panel (bottom right) always takes just the
      height it needs (the "auto" row); the space above it is split
-     between the rows by --split-rows. Code is row 1, Rhythm rows 2–3,
+     between the rows by --split-rows (resize.js). Code is row 1, Rhythm rows 2–3,
      Issues rows 1–2, Playback row 3 (see the placements below). */
   grid-template-rows: var(--split-rows, minmax(0, 0.62fr) minmax(0, 0.38fr)) auto;
   position: relative;          /* the resize handles are placed inside it */
@@ -412,6 +412,16 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 .cb-panel--sequencer { grid-column: 1; grid-row: 2 / 4; }
 .cb-panel--playback  { grid-column: 2; grid-row: 3; }
 .cb-panel--output    { grid-row: 4; }
+
+/* When the Code/Rhythm border is dragged lower than the top of Playback
+   (resize.js adds cb-split--low), Code reaches down beside Playback and
+   Rhythm sits below it. Playback keeps its fixed height either way. */
+@media (min-width: 769px) {
+  .cb-workspace.cb-split--low .cb-panel--editor    { grid-row: 1 / 3; }
+  .cb-workspace.cb-split--low .cb-panel--issues    { grid-row: 1; }
+  .cb-workspace.cb-split--low .cb-panel--playback  { grid-row: 2 / 4; }
+  .cb-workspace.cb-split--low .cb-panel--sequencer { grid-row: 3; }
+}
 
 /* ── Panels ──────────────────────────────────── */
 .cb-panel {
