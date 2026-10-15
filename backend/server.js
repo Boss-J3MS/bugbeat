@@ -759,9 +759,9 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
     const [sessionRow] = await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [newUser.insertId, token, req.ip || '', req.headers['user-agent'] || '', signupExpiry]
+      [newUser.insertId, token, clientIp(req), req.headers['user-agent'] || '', signupExpiry]
     );
-    recordSessionLocation(sessionRow.insertId, req.ip);
+    recordSessionLocation(sessionRow.insertId, clientIp(req));
 
     await db.query(
       `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
@@ -866,12 +866,12 @@ app.post('/auth/login', authLimiter, async (req, res) => {
       [
         user.id,
         token,
-        req.ip || '',
+        clientIp(req),
         req.headers['user-agent'] || '',
         loginExpiry
       ]
     );
-    recordSessionLocation(sessionRow.insertId, req.ip);
+    recordSessionLocation(sessionRow.insertId, clientIp(req));
 
     // Update last_login
     await db.query(
@@ -989,9 +989,9 @@ app.post('/auth/google', authLimiter, async (req, res) => {
     const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     const [sessionRow] = await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at) VALUES (?, ?, ?, ?, ?)`,
-      [user.id, token, req.ip || '', req.headers['user-agent'] || '', expiry]
+      [user.id, token, clientIp(req), req.headers['user-agent'] || '', expiry]
     );
-    recordSessionLocation(sessionRow.insertId, req.ip);
+    recordSessionLocation(sessionRow.insertId, clientIp(req));
 
     await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
@@ -1156,6 +1156,23 @@ async function lookupLocation(rawIp) {
     geoCache.set(ip, { location, at: Date.now() });
   }
   return location;
+}
+
+// The visitor's own IP address, for the device list. On Render, req.ip is
+// the address of one of Render's own proxies (a private 10.x address), so
+// every login looked like "Local network". The real address is in the
+// True-Client-IP / CF-Connecting-IP header set by the CDN in front of
+// Render, or failing that the first public address in X-Forwarded-For.
+// Only used for showing where a login came from, not for security checks.
+function clientIp(req) {
+  const clean = v => String(v || '').trim().replace(/^::ffff:/, '');
+  for (const h of ['true-client-ip', 'cf-connecting-ip']) {
+    const ip = clean(req.headers[h]);
+    if (ip && !isPrivateIp(ip)) return ip;
+  }
+  const chain = String(req.headers['x-forwarded-for'] || '').split(',').map(clean).filter(Boolean);
+  const firstPublic = chain.find(ip => !isPrivateIp(ip));
+  return firstPublic || clean(req.ip);
 }
 
 // Fire and forget: login never waits for (or fails because of) this.
