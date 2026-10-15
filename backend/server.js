@@ -32,7 +32,7 @@ import express     from 'express';
 import cors        from 'cors';
 import dotenv       from 'dotenv';
 import helmet        from 'helmet';
-import rateLimit       from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { OAuth2Client } from 'google-auth-library';
 import crypto       from 'crypto';
 import dns          from 'dns';
@@ -78,10 +78,19 @@ app.use(helmet());
 // than anything legitimate needs and made a body-size DoS trivially cheap.
 app.use(express.json({ limit: '2mb' }));
 
+// Every limiter counts per visitor. By default express-rate-limit uses
+// req.ip, which on Render is the address of one of Render's own proxies,
+// so the whole site could share a few counters: 10 logins from anyone
+// would lock everyone out, and a handful of active users could reach the
+// general limit together. visitorKey uses the visitor's real address
+// instead (clientIp, further down; the same one the device list uses).
+const visitorKey = (req) => ipKeyGenerator(clientIp(req));
+
 // General API rate limit — generous enough for normal use, but stops
 // trivial scripted abuse. Auth routes get a much stricter limit below
 // since credential stuffing / signup spam is the higher-value target.
 const generalLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 300,
   standardHeaders: true,
@@ -90,6 +99,7 @@ const generalLimiter = rateLimit({
 app.use(generalLimiter);
 
 const authLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: true,
@@ -607,6 +617,7 @@ function hashSignupCode(email, code) {
 
 // Stricter than authLimiter: every call sends an email.
 const emailCodeLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: true,
@@ -822,7 +833,23 @@ app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
 });
 
 // ── POST /auth/login ───────────────────────────
-app.post('/auth/login', authLimiter, async (req, res) => {
+// Failed logins per email address, whatever network they come from: slows
+// down password guessing on one account. Successful logins don't count,
+// so a user who types their password right is never affected.
+const loginEmailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 8,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const email = String(req.body?.email || '').trim().toLowerCase().slice(0, 254);
+    return email ? `email:${email}` : visitorKey(req);
+  },
+  message: { error: 'Too many failed attempts for this account. Please wait 15 minutes, or reset your password.' },
+});
+
+app.post('/auth/login', authLimiter, loginEmailLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
@@ -1161,12 +1188,13 @@ async function lookupLocation(rawIp) {
 // The visitor's own IP address, for the device list. On Render, req.ip is
 // the address of one of Render's own proxies (a private 10.x address), so
 // every login looked like "Local network". The real address is in the
-// True-Client-IP / CF-Connecting-IP header set by the CDN in front of
+// CF-Connecting-IP / True-Client-IP header set by the CDN in front of
 // Render, or failing that the first public address in X-Forwarded-For.
-// Only used for showing where a login came from, not for security checks.
+// Used for the device list and to count requests per visitor in the
+// rate limiters.
 function clientIp(req) {
   const clean = v => String(v || '').trim().replace(/^::ffff:/, '');
-  for (const h of ['true-client-ip', 'cf-connecting-ip']) {
+  for (const h of ['cf-connecting-ip', 'true-client-ip']) {
     const ip = clean(req.headers[h]);
     if (ip && !isPrivateIp(ip)) return ip;
   }
@@ -1515,6 +1543,7 @@ async function sendPasswordResetEmail(toEmail, username, link) {
 
 // Stricter than authLimiter: every request can send an email.
 const forgotPasswordLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: true,
@@ -1947,6 +1976,7 @@ const AUDIO_MAX_BYTES = 50 * 1024 * 1024;
 const AUDIO_MAX_FILES = 5;
 
 const audioUploadLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: 'draft-7',
@@ -2235,6 +2265,7 @@ const PAIZA_LANGUAGE_IDS = {
 // own limiter on top of requireAuth to keep our app from hammering a
 // shared free community resource.
 const executeLimiter = rateLimit({
+  keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
   limit: 15,
   standardHeaders: true,
