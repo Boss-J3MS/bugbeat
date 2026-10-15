@@ -6,7 +6,7 @@
 //    • Preferences: Appearance (theme / text size / code size — wired up
 //                   by appearance.js) and the default code language.
 //    • Security:    Change password (opens account.js's window on top),
-//                   log out other devices, delete account.
+//                   signed-in devices (log out one, or all others), delete account.
 //  Also shows the nickname (or the username) in the sidebar greeting.
 //  Uses BACKEND_URL, cbToken and cbUser from app.js.
 // ═══════════════════════════════════════════════
@@ -122,6 +122,7 @@
       t.tabIndex = on ? 0 : -1;
       $('set-pane-' + t.dataset.pane).hidden = !on;
     });
+    if (tab.dataset.pane === 'security' && typeof loadDevices === 'function') loadDevices();
     if (focus) tab.focus();
   }
   tabs.forEach((t, i) => {
@@ -227,7 +228,114 @@
     }, 250);
   }
 
-  // ── Security: log out other devices ───────────
+  // ── Security: signed-in devices ────────────────
+  // GET /auth/sessions lists this account's devices (device, approximate
+  // location, when it signed in and was last used). Each other device can
+  // be logged out on its own, or all of them at once.
+  const devList = $('set-devices-list');
+  const DEVICE_ICONS = {
+    computer: '<rect x="3" y="4" width="18" height="12" rx="2"/><line x1="8" y1="20" x2="16" y2="20"/><line x1="12" y1="16" x2="12" y2="20"/>',
+    phone:    '<rect x="7" y="2" width="10" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/>',
+    tablet:   '<rect x="4" y="2" width="16" height="20" rx="2"/><line x1="11" y1="18" x2="13" y2="18"/>'
+  };
+
+  function ago(d) {
+    return typeof timeAgo === 'function' ? timeAgo(d) : formatDate(d);
+  }
+  function shortDate(d) {
+    const date = d ? new Date(d) : null;
+    return date && !isNaN(date)
+      ? date.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
+      : '—';
+  }
+
+  function devNote(text) {
+    devList.innerHTML = '';
+    const li = document.createElement('li');
+    li.className = 'cb-devices__note';
+    li.textContent = text;
+    devList.appendChild(li);
+  }
+
+  function renderDevices(list) {
+    devList.innerHTML = '';
+    if (!list.length) return devNote('No signed-in devices.');
+    list.forEach((s) => {
+      const li = document.createElement('li');
+      li.className = 'cb-device' + (s.current ? ' cb-device--current' : '');
+
+      const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      icon.setAttribute('viewBox', '0 0 24 24');
+      icon.setAttribute('class', 'cb-ico cb-device__icon');
+      icon.setAttribute('aria-hidden', 'true');
+      icon.innerHTML = DEVICE_ICONS[s.type] || DEVICE_ICONS.computer;
+
+      const body = document.createElement('div');
+      body.className = 'cb-device__body';
+      const name = document.createElement('div');
+      name.className = 'cb-device__name';
+      name.textContent = s.device || 'Unknown device';
+      if (s.current) {
+        const tag = document.createElement('span');
+        tag.className = 'cb-device__tag';
+        tag.textContent = 'This device';
+        name.appendChild(tag);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'cb-device__meta';
+      meta.textContent = [
+        s.location || 'Unknown location',
+        s.current ? 'Active now' : (s.last_active ? `Active ${ago(s.last_active)}` : ''),
+        s.signed_in ? `Signed in ${shortDate(s.signed_in)}` : ''
+      ].filter(Boolean).join(' · ');
+      body.append(name, meta);
+      li.append(icon, body);
+
+      if (!s.current) {
+        const out = document.createElement('button');
+        out.type = 'button';
+        out.className = 'cb-btn cb-btn--ghost cb-device__out';
+        out.textContent = 'Log out';
+        out.setAttribute('aria-label', `Log out ${s.device || 'this device'}`);
+        out.addEventListener('click', () => logoutDevice(s, li, out));
+        li.appendChild(out);
+      }
+      devList.appendChild(li);
+    });
+    $('set-logout-others').disabled = !list.some((s) => !s.current);
+  }
+
+  async function loadDevices() {
+    devNote('Loading…');
+    try {
+      const res = await fetch(`${BACKEND_URL}/auth/sessions`, { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Could not load your devices.');
+      renderDevices(Array.isArray(data.sessions) ? data.sessions : []);
+    } catch (err) {
+      devNote(niceError(err, 'Could not load your devices.'));
+    }
+  }
+
+  async function logoutDevice(s, li, btn) {
+    const msg = $('set-devices-msg');
+    btn.disabled = true;
+    li.classList.add('cb-device--busy');
+    try {
+      const res = await fetch(`${BACKEND_URL}/auth/sessions/${encodeURIComponent(s.id)}`, {
+        method: 'DELETE', headers: authHeaders()
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok && res.status !== 404) throw new Error(data.error || 'Could not log out that device.');
+      showMsg(msg, `Logged out ${s.device || 'that device'}.`, 'success');
+      loadDevices();
+    } catch (err) {
+      li.classList.remove('cb-device--busy');
+      btn.disabled = false;
+      showMsg(msg, niceError(err, 'Could not log out that device.'), 'error');
+    }
+  }
+
   $('set-logout-others').addEventListener('click', async () => {
     const btn = $('set-logout-others');
     const msg = $('set-devices-msg');
@@ -241,6 +349,7 @@
       showMsg(msg, niceError(err, 'Could not log out your other devices.'), 'error');
     } finally {
       btn.disabled = false;
+      loadDevices();
     }
   });
 

@@ -7,6 +7,7 @@ import jwt    from 'jsonwebtoken';
 import bcrypt from 'bcrypt';
 import dotenv from 'dotenv';
 import db     from './db.js';
+import crypto from 'crypto';
 dotenv.config();
 
 // JWT_SECRET must be set via environment variable — no insecure fallback.
@@ -47,7 +48,9 @@ export function validatePasswordStrength(password) {
 
 // ── JWT ────────────────────────────────────────
 export function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+  // jwtid makes every token unique, even for two logins in the same second
+  // (the token is how a session — and "this device" — is told apart).
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES, jwtid: crypto.randomUUID() });
 }
 
 export function verifyToken(token) {
@@ -85,6 +88,7 @@ export async function requireAuth(req, res, next) {
     if (rows.length === 0) {
       return res.status(401).json({ error: 'Session expired or revoked. Please log in again.' });
     }
+    touchSession(rows[0].id);
   } catch (err) {
     console.error('[auth] session lookup failed:', err.message);
     return res.status(500).json({ error: 'Authentication check failed. Please try again.' });
@@ -92,6 +96,22 @@ export async function requireAuth(req, res, next) {
 
   req.user = decoded; // { userId, email, username, role }
   next();
+}
+
+// Updates sessions.last_active (shown in Settings → Devices), at most once
+// every 5 minutes per session, without making the request wait. Quietly
+// does nothing if the column hasn't been added yet.
+let lastActiveMissing = false;
+function touchSession(id) {
+  if (lastActiveMissing) return;
+  db.query(
+    `UPDATE sessions SET last_active = NOW()
+     WHERE id = ? AND (last_active IS NULL OR last_active < NOW() - INTERVAL 5 MINUTE)`,
+    [id]
+  ).catch(err => {
+    if (err.code === 'ER_BAD_FIELD_ERROR') lastActiveMissing = true;
+    else console.warn('[auth] last_active update failed:', err.message);
+  });
 }
 
 // ── Admin middleware ───────────────────────────

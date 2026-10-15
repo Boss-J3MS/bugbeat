@@ -756,11 +756,12 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
     });
 
     const signupExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await db.query(
+    const [sessionRow] = await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at)
        VALUES (?, ?, ?, ?, ?)`,
       [newUser.insertId, token, req.ip || '', req.headers['user-agent'] || '', signupExpiry]
     );
+    recordSessionLocation(sessionRow.insertId, req.ip);
 
     await db.query(
       `INSERT INTO notifications (user_id, message, type) VALUES (?, ?, ?)`,
@@ -859,7 +860,7 @@ app.post('/auth/login', authLimiter, async (req, res) => {
 
     // Save session
     const loginExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await db.query(
+    const [sessionRow] = await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at)
        VALUES (?, ?, ?, ?, ?)`,
       [
@@ -870,6 +871,7 @@ app.post('/auth/login', authLimiter, async (req, res) => {
         loginExpiry
       ]
     );
+    recordSessionLocation(sessionRow.insertId, req.ip);
 
     // Update last_login
     await db.query(
@@ -985,10 +987,11 @@ app.post('/auth/google', authLimiter, async (req, res) => {
     });
 
     const expiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-    await db.query(
+    const [sessionRow] = await db.query(
       `INSERT INTO sessions (user_id, token, ip_address, device_info, expires_at) VALUES (?, ?, ?, ?, ?)`,
       [user.id, token, req.ip || '', req.headers['user-agent'] || '', expiry]
     );
+    recordSessionLocation(sessionRow.insertId, req.ip);
 
     await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
 
@@ -1110,6 +1113,134 @@ app.patch('/auth/profile', requireAuth, async (req, res) => {
     }
     console.error('/auth/profile error:', err.message);
     res.status(500).json({ error: 'Could not save your profile. Please try again.' });
+  }
+});
+
+// ══════════════════════════════════════════════
+// SIGNED-IN DEVICES (Settings → Security → Devices)
+// ══════════════════════════════════════════════
+// Each login is a row in `sessions` (with the browser's user-agent and IP).
+// Two optional columns add to that:
+//   location     "Cebu City, Philippines", looked up once at login from the
+//                IP via ip-api.com (free for non-commercial use, 45 lookups
+//                a minute, no key). Only the IP address is sent.
+//   last_active  updated by requireAuth (auth.js), at most every 5 minutes.
+// Run once:  ALTER TABLE sessions ADD COLUMN location VARCHAR(120) NULL,
+//                                 ADD COLUMN last_active DATETIME NULL;
+// Without them the list still works, just without location / activity.
+const GEO_API_URL = process.env.GEO_API_URL || 'http://ip-api.com/json';
+const geoCache = new Map();   // ip -> { location, at }
+
+function isPrivateIp(ip) {
+  return !ip || ip === '::1' || ip.startsWith('127.') || ip.startsWith('10.') ||
+    ip.startsWith('192.168.') || /^172\.(1[6-9]|2\d|3[01])\./.test(ip) ||
+    ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe80');
+}
+
+async function lookupLocation(rawIp) {
+  const ip = String(rawIp || '').replace(/^::ffff:/, '');
+  if (isPrivateIp(ip)) return 'Local network';
+  const hit = geoCache.get(ip);
+  if (hit && Date.now() - hit.at < 24 * 60 * 60 * 1000) return hit.location;
+  const res = await fetch(
+    `${GEO_API_URL}/${encodeURIComponent(ip)}?fields=status,city,regionName,country`,
+    { signal: AbortSignal.timeout(4000) }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (data.status !== 'success') return null;
+  const place = data.city || data.regionName;
+  const location = [place, data.country].filter(Boolean).join(', ').slice(0, 120) || null;
+  if (location) {
+    if (geoCache.size > 1000) geoCache.clear();
+    geoCache.set(ip, { location, at: Date.now() });
+  }
+  return location;
+}
+
+// Fire and forget: login never waits for (or fails because of) this.
+function recordSessionLocation(sessionId, ip) {
+  if (!sessionId) return;
+  lookupLocation(ip)
+    .then(location => location &&
+      db.query('UPDATE sessions SET location = ? WHERE id = ?', [location, sessionId]))
+    .catch(err => {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') console.warn('[sessions] location lookup failed:', err.message);
+    });
+}
+
+// "Chrome on Windows", "Safari on iPhone"… from the user-agent.
+function describeDevice(ua) {
+  ua = String(ua || '');
+  const browser =
+    /Edg\//.test(ua) ? 'Edge' :
+    /OPR\/|Opera/.test(ua) ? 'Opera' :
+    /SamsungBrowser/.test(ua) ? 'Samsung Internet' :
+    /Firefox|FxiOS/.test(ua) ? 'Firefox' :
+    /Chrome|CriOS/.test(ua) ? 'Chrome' :
+    /Safari/.test(ua) ? 'Safari' : 'Browser';
+  const os =
+    /iPhone/.test(ua) ? 'iPhone' :
+    /iPad/.test(ua) ? 'iPad' :
+    /Android/.test(ua) ? 'Android' :
+    /Windows/.test(ua) ? 'Windows' :
+    /Mac OS X|Macintosh/.test(ua) ? 'Mac' :
+    /CrOS/.test(ua) ? 'ChromeOS' :
+    /Linux/.test(ua) ? 'Linux' : '';
+  const type = /iPhone|Android.*Mobile|Mobile/.test(ua) ? 'phone'
+    : /iPad|Android|Tablet/.test(ua) ? 'tablet' : 'computer';
+  return { name: os ? `${browser} on ${os}` : browser, type };
+}
+
+// ── GET /auth/sessions ─────────────────────────
+// This account's signed-in devices. Never returns tokens or IP addresses.
+app.get('/auth/sessions', requireAuth, async (req, res) => {
+  const token = req.headers['authorization']?.split(' ')[1] || '';
+  try {
+    // SELECT * so it works whichever optional columns (created_at,
+    // location, last_active) this database has.
+    const [rows] = await db.query(
+      'SELECT * FROM sessions WHERE user_id = ? AND expires_at > NOW()', [req.user.userId]
+    );
+    const sessions = rows.map(r => {
+      const device = describeDevice(r.device_info);
+      return {
+        id:          r.id,
+        device:      device.name,
+        type:        device.type,
+        location:    r.location || null,
+        signed_in:   r.created_at || null,
+        last_active: r.last_active || r.created_at || null,
+        current:     r.token === token
+      };
+    }).sort((a, b) => (b.current - a.current) ||
+      (new Date(b.last_active || 0) - new Date(a.last_active || 0)) || (b.id - a.id));
+    res.json({ sessions });
+  } catch (err) {
+    console.error('/auth/sessions error:', err.message);
+    res.status(500).json({ error: 'Could not load your devices. Please try again.' });
+  }
+});
+
+// ── DELETE /auth/sessions/:id ──────────────────
+// Logs out one other device. (This device logs out with the normal Logout.)
+app.delete('/auth/sessions/:id', requireAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid device.' });
+  const token = req.headers['authorization']?.split(' ')[1] || '';
+  try {
+    const [[row]] = await db.query(
+      'SELECT token FROM sessions WHERE id = ? AND user_id = ? LIMIT 1', [id, req.user.userId]
+    );
+    if (!row) return res.status(404).json({ error: 'That device is already logged out.' });
+    if (row.token === token) {
+      return res.status(400).json({ error: 'This is the device you are using. Use Logout to sign out here.' });
+    }
+    await db.query('DELETE FROM sessions WHERE id = ? AND user_id = ?', [id, req.user.userId]);
+    res.json({ message: 'Logged out that device.' });
+  } catch (err) {
+    console.error('/auth/sessions/:id error:', err.message);
+    res.status(500).json({ error: 'Could not log out that device. Please try again.' });
   }
 });
 

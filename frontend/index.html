@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=32" />
   <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
@@ -546,11 +546,16 @@
 
           <div class="cb-set__group">
             <h3 class="cb-set__title">Devices</h3>
+            <p class="cb-set__muted">Where your account is signed in. Log out any device you don't recognise. Locations are approximate.</p>
+            <!-- Filled by settings.js from GET /auth/sessions. -->
+            <ul id="set-devices-list" class="cb-devices" aria-label="Signed-in devices">
+              <li class="cb-devices__note">Loading…</li>
+            </ul>
             <div class="cb-set__row">
               <span class="cb-set__muted">Signed in on a shared or lost device? Log out everywhere except here.</span>
-              <button type="button" id="set-logout-others" class="cb-btn cb-btn--ghost">Log out other devices</button>
+              <button type="button" id="set-logout-others" class="cb-btn cb-btn--ghost">Log out all other devices</button>
             </div>
-            <div id="set-devices-msg" class="cb-bugreport-modal__msg" hidden></div>
+            <div id="set-devices-msg" class="cb-bugreport-modal__msg" role="status" hidden></div>
           </div>
 
           <div class="cb-set__group cb-set__danger">
@@ -689,7 +694,7 @@
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
   <script src="account.js?v=2"></script>
-  <script src="settings.js?v=3"></script>
+  <script src="settings.js?v=4"></script>
   <script src="logout.js?v=2"></script>
   <script src="tour.js?v=9"></script>
   <script src="resize.js?v=4"></script>
