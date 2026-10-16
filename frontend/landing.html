@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugBeat — Hear where your bugs are</title>
+  <meta name="description" content="BugBeat turns your code into music. Lines with errors distort the beat, so you can hear where the bugs are." />
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="auth.css?v=17" />
+  <link rel="stylesheet" href="landing.css?v=1" />
+</head>
+<body class="ld-page">
+
+  <header class="ld-top">
+    <a href="landing.html" class="ld-brand">
+      <img src="bugbeatMark.png" alt="" width="28" height="28" />
+      <span>BugBeat</span>
+    </a>
+    <nav class="ld-top__actions">
+      <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+      <span class="ld-guest">
+        <a href="login.html" class="cb-btn cb-btn--ghost">Log in</a>
+        <a href="signup.html" class="cb-btn cb-btn--primary">Get started</a>
+      </span>
+      <a href="index.html" class="cb-btn cb-btn--primary ld-member" hidden>Open the editor</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="ld-hero">
+      <div class="ld-hero__text">
+        <h1>Hear where your bugs are.</h1>
+        <p class="ld-lead">BugBeat reads your code line by line and plays it back as music. Clean lines keep the groove going; a line with an error bends the beat out of shape, so you notice the problem before you go hunting for it.</p>
+        <div class="ld-hero__cta">
+          <a href="#demo" class="ld-btn ld-btn--primary">Play the demo</a>
+          <a href="signup.html" class="ld-btn ld-btn--ghost ld-guest">Create a free account</a>
+        </div>
+        <p class="ld-small">Free to use. Sign up with email or Google.</p>
+      </div>
+      <div class="ld-hero__visual" aria-hidden="true">
+        <canvas id="auth-rain" class="auth-rain-bg"></canvas>
+        <img src="bugbeatLogo-bg.png" alt="" class="auth-bg-logo auth-bg-logo--dark" />
+        <img src="bugbeatLogo.png" alt="" class="auth-bg-logo auth-bg-logo--light" />
+      </div>
+    </section>
+
+    <section id="demo" class="ld-section ld-demo">
+      <h2>Listen to a bug</h2>
+      <p class="ld-section__intro">This function should return the largest number in a list, yet give it <code>[-4, -9, -2]</code> and it answers 0. Press play, watch the highlight move down the code and listen for line 2.</p>
+
+      <div class="ld-demo__box">
+        <div class="ld-demo__bar">
+          <div class="ld-seg" role="group" aria-label="Code version">
+            <button type="button" class="ld-seg__btn" data-version="buggy" aria-pressed="true">With the bug</button>
+            <button type="button" class="ld-seg__btn" data-version="fixed" aria-pressed="false">Fixed</button>
+          </div>
+          <button type="button" id="ld-play" class="ld-btn ld-btn--primary ld-play">▶ Play</button>
+        </div>
+
+        <pre class="ld-code" id="ld-code" aria-label="Example Python code"></pre>
+
+        <div class="ld-wave" id="ld-wave" aria-hidden="true"></div>
+
+        <div class="ld-issue" id="ld-issue" aria-live="polite"></div>
+      </div>
+      <p class="ld-small">A pre-made example so you can hear the idea without an account. In the app, BugBeat analyzes your own code.</p>
+    </section>
+
+    <section class="ld-section">
+      <h2>How it works</h2>
+      <ol class="ld-steps">
+        <li>
+          <h3>Write or paste your code</h3>
+          <p>Choose the language, or leave it on Auto-detect. Need something to try? Load a demo.</p>
+        </li>
+        <li>
+          <h3>Analyze</h3>
+          <p>Gemini checks every line for syntax, logic and runtime errors and suggests a fix for each one. A machine learning model adds a risk score based on how complex the code is.</p>
+        </li>
+        <li>
+          <h3>Listen, then fix</h3>
+          <p>Each line becomes a beat on the rhythm waveform. Click any beat to jump to its line.</p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="ld-section">
+      <h2>What you get</h2>
+      <div class="ld-features">
+        <article>
+          <h3>Fixes, not just flags</h3>
+          <p>Every issue says what went wrong and gives you a corrected line to copy.</p>
+        </article>
+        <article>
+          <h3>A waveform you can read</h3>
+          <p>Green for clean lines, then orange through red as the problems get worse.</p>
+        </article>
+        <article>
+          <h3>Your music or ours</h3>
+          <p>Pick one of five styles, Lo-fi Chill to Rock Drive, or upload an MP3 or WAV and BugBeat distorts your own track on the buggy lines.</p>
+        </article>
+        <article>
+          <h3>Run it right there</h3>
+          <p>Execute JavaScript, Python, Java, C, C++, Kotlin or PHP and read the output without leaving the page.</p>
+        </article>
+        <article>
+          <h3>History</h3>
+          <p>Reopen any past analysis with its code, issues and rhythm.</p>
+        </article>
+        <article>
+          <h3>Made for listening</h3>
+          <p>Sound carries how serious each line is, so you don't have to rely on color alone. That helps auditory learners and programmers with low vision.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="ld-section">
+      <h2>Works with</h2>
+      <ul class="ld-langs">
+        <li>JavaScript</li><li>Python</li><li>TypeScript</li><li>Java</li>
+        <li>C</li><li>C++</li><li>Kotlin</li><li>PHP</li>
+      </ul>
+    </section>
+
+    <section class="ld-section ld-final">
+      <h2>Ready to hear your own code?</h2>
+      <div class="ld-hero__cta ld-guest">
+        <a href="signup.html" class="ld-btn ld-btn--primary">Sign up free</a>
+        <a href="login.html" class="ld-btn ld-btn--ghost">Log in</a>
+      </div>
+      <div class="ld-hero__cta ld-member" hidden>
+        <a href="index.html" class="ld-btn ld-btn--primary">Open the editor</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="ld-footer">
+    <p><strong>BugBeat</strong>: Finding Code and Logic Errors Through Intelligent Rhythm</p>
+    <p>Capstone 30 · BSIT, University of Cebu – Lapu-Lapu and Mandaue</p>
+    <p>Dela Peña, Ragas and Gadiano · Adviser: Dr. Alexander Y. Bucol</p>
+  </footer>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+  <script src="theme.js"></script>
+  <script src="rain.js"></script>
+  <script src="landing.js?v=1"></script>
+</body>
+</html>

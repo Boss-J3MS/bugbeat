@@ -37,7 +37,7 @@ const cbToken = localStorage.getItem('cb_token');
 const cbUser  = JSON.parse(localStorage.getItem('cb_user') || 'null');
 
 if (!cbToken || !cbUser) {
-  window.location.href = 'login.html';
+  window.location.href = 'landing.html';
 }
 
 // Show user greeting + logout
