@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=32" />
   <link rel="stylesheet" href="auth.css?v=17" />
-  <link rel="stylesheet" href="landing.css?v=1" />
+  <link rel="stylesheet" href="landing.css?v=2" />
 </head>
 <body class="ld-page">
 
@@ -54,6 +54,7 @@
     </section>
 
     <section id="demo" class="ld-section ld-demo">
+      <p class="ld-kicker">// try it</p>
       <h2>Listen to a bug</h2>
       <p class="ld-section__intro">This function should return the largest number in a list, yet give it <code>[-4, -9, -2]</code> and it answers 0. Press play, watch the highlight move down the code and listen for line 2.</p>
 
@@ -76,54 +77,103 @@
     </section>
 
     <section class="ld-section">
-      <h2>How it works</h2>
-      <ol class="ld-steps">
+      <p class="ld-kicker">// how it works</p>
+      <h2>From code to beat in three steps</h2>
+      <ol class="ld-flow">
         <li>
-          <h3>Write or paste your code</h3>
-          <p>Choose the language, or leave it on Auto-detect. Need something to try? Load a demo.</p>
+          <div class="ld-mini ld-mini--editor" aria-hidden="true">
+            <span class="ld-mini__pill">Python ▾</span>
+            <code><span class="ld-mini__ln">1</span>def find_max(numbers):</code>
+            <code><span class="ld-mini__ln">2</span>    largest = 0</code>
+          </div>
+          <p class="ld-flow__tag">01 · write</p>
+          <h3>Paste your code</h3>
+          <p>Pick the language or leave it on Auto-detect. No code handy? Load a demo.</p>
         </li>
         <li>
-          <h3>Analyze</h3>
-          <p>Gemini checks every line for syntax, logic and runtime errors and suggests a fix for each one. A machine learning model adds a risk score based on how complex the code is.</p>
+          <div class="ld-mini ld-mini--issue" aria-hidden="true">
+            <span class="ld-sev ld-sev--error">error</span>
+            <span>Line 2 · logic</span>
+            <code>largest = numbers[0]</code>
+          </div>
+          <p class="ld-flow__tag">02 · analyze</p>
+          <h3>Find what's wrong</h3>
+          <p>BugBeat checks every line for syntax, logic and runtime errors, writes a fix for each one and rates how risky the code is overall.</p>
         </li>
         <li>
-          <h3>Listen, then fix</h3>
-          <p>Each line becomes a beat on the rhythm waveform. Click any beat to jump to its line.</p>
+          <div class="ld-mini ld-mini--wave" aria-hidden="true">
+            <span class="ld-mini__play">▶</span>
+            <span class="ld-mini__bars"><i></i><i class="e"></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          </div>
+          <p class="ld-flow__tag">03 · listen</p>
+          <h3>Hear it, then fix it</h3>
+          <p>Every line is a beat on the waveform. Click a beat to jump straight to its line.</p>
         </li>
       </ol>
     </section>
 
     <section class="ld-section">
-      <h2>What you get</h2>
-      <div class="ld-features">
-        <article>
+      <p class="ld-kicker">// what you get</p>
+      <h2>Built around the bug, not the dashboard</h2>
+      <div class="ld-bento">
+        <article class="ld-tile ld-tile--fix">
           <h3>Fixes, not just flags</h3>
-          <p>Every issue says what went wrong and gives you a corrected line to copy.</p>
+          <p>Each issue says what went wrong and hands you the corrected line.</p>
+          <pre class="ld-snippet" aria-hidden="true"><span>1  def find_max(numbers):</span><span class="bad">2      largest = 0</span><span>3      for n in numbers:</span><span>4          if n &gt; largest:</span></pre>
+          <div class="ld-issuecard" aria-hidden="true">
+            <div class="ld-issuecard__head"><span class="ld-sev ld-sev--error">error</span> Line 2</div>
+            <p>largest starts at 0, so a list of only negative numbers never beats it.</p>
+            <pre class="ld-diff"><span class="del">-     largest = 0</span><span class="add">+     largest = numbers[0]</span></pre>
+          </div>
         </article>
-        <article>
-          <h3>A waveform you can read</h3>
-          <p>Green for clean lines, then orange through red as the problems get worse.</p>
+
+        <article class="ld-tile">
+          <h3>Four levels you can hear</h3>
+          <div class="ld-levels" aria-hidden="true">
+            <span style="--h:30%" class="clean">clean</span>
+            <span style="--h:52%" class="warning">warning</span>
+            <span style="--h:76%" class="error">error</span>
+            <span style="--h:100%" class="critical">critical</span>
+          </div>
+          <p>The worse the line, the harder the music bends.</p>
         </article>
-        <article>
+
+        <article class="ld-tile">
           <h3>Your music or ours</h3>
-          <p>Pick one of five styles, Lo-fi Chill to Rock Drive, or upload an MP3 or WAV and BugBeat distorts your own track on the buggy lines.</p>
+          <ul class="ld-chips" aria-label="Music styles">
+            <li>Lo-fi Chill</li><li>Smooth Jazz</li><li>Rock Drive</li><li>Electronic Pulse</li><li>Ambient Calm</li><li class="ld-chips__own">+ your MP3 or WAV</li>
+          </ul>
         </article>
-        <article>
-          <h3>Run it right there</h3>
-          <p>Execute JavaScript, Python, Java, C, C++, Kotlin or PHP and read the output without leaving the page.</p>
+
+        <article class="ld-tile ld-tile--wide">
+          <div>
+            <h3>Run it right there</h3>
+            <p>JavaScript, Python, Java, C, C++, Kotlin and PHP run in the Output panel, so you can check the fix without switching apps.</p>
+          </div>
+          <pre class="ld-console" aria-hidden="true"><span class="dim">$ run find_max.py</span>
+-2
+<span class="ok">● success</span></pre>
         </article>
-        <article>
+
+        <article class="ld-tile">
           <h3>History</h3>
+          <ul class="ld-history" aria-hidden="true">
+            <li><span>find_max.py</span><span class="ld-sev ld-sev--error">1 issue</span></li>
+            <li><span>bubble_sort.js</span><span class="ld-sev ld-sev--clean">clean</span></li>
+            <li><span>Grades.java</span><span class="ld-sev ld-sev--warning">2 issues</span></li>
+          </ul>
           <p>Reopen any past analysis with its code, issues and rhythm.</p>
         </article>
-        <article>
+
+        <article class="ld-tile ld-tile--listen">
           <h3>Made for listening</h3>
-          <p>Sound carries how serious each line is, so you don't have to rely on color alone. That helps auditory learners and programmers with low vision.</p>
+          <p>Sound carries how serious each line is, so color is never the only clue. That matters for auditory learners and for programmers with low vision.</p>
         </article>
       </div>
     </section>
 
     <section class="ld-section">
+      <p class="ld-kicker">// languages</p>
       <h2>Works with</h2>
       <ul class="ld-langs">
         <li>JavaScript</li><li>Python</li><li>TypeScript</li><li>Java</li>
