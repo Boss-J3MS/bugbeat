@@ -2,16 +2,17 @@
 
 **Finding Code & Logic Errors Through Intelligent Rhythm**
 
-BugBeat is an AI-driven web app that converts code errors into rhythm-based audio (sonification) to help beginner programmers detect bugs through sound. A capstone project (Capstone 30) by Roland James Dela Peña, Ragas, and Gadiano — BSIT, University of Cebu Lapu-Lapu and Mandaue (UCLM).
+BugBeat is an AI-driven web app that converts code errors into rhythm-based audio (sonification) to help beginner programmers detect bugs through sound. A capstone project (Capstone 30) by Vladimir Clint G. Catigan, Roland James Dela Peña, Chrystal Jem V. Gadiano and Baby Ghel Ragas — BSIT, University of Cebu Lapu-Lapu and Mandaue (UCLM). Adviser: Dr. Alexander Y. Bucol.
 
 ## Features
 
-- Multi-language static analysis via the Gemini API, with AST-based precision for Python and Java
+- Multi-language static analysis via the Gemini API, with per-line fix suggestions
 - Real-time code-to-rhythm sonification using Tone.js
-- ML defect-prediction ensemble (CodeBERT + Random Forest + Neural Network) with multi-language complexity scoring
-- Music search: generates a Tone.js music style inspired by a searched song or genre, matched to the code's error rhythm
+- ML defect-prediction ensemble (CodeBERT + Random Forest + Neural Network) with complexity metrics from `radon` (Python) and `lizard` (other languages)
+- Five built-in music styles, or upload your own MP3/WAV track; buggy lines distort the music
 - Run code in the Output panel (via the paiza.io runner) for JavaScript, Python, Java, C, C++, Kotlin and PHP; TypeScript can be analysed but not run
 - Analysis history
+- A landing page with a playable demo for visitors who aren't logged in
 - Accounts with email/password or Google sign-in, and password reset by email
 - Settings for profile, preferences and security, plus themes and text size
 - A guided tour for first-time users
