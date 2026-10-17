@@ -438,6 +438,9 @@ let currentStyle = null;
 let toneLoop     = null;
 let chordIndex   = 0;
 let synthsReady  = false;
+let magentaGroove = null;   // { drums, lead, temperature, risk } from magenta.js, or null
+let grooveRequest = 0;      // ignores Magenta results that arrive after a newer request
+let lastRisk      = null;   // risk level of the latest analysis
 
 // ── Audio file state ───────────────────────────
 let audioContext   = null;
@@ -764,9 +767,10 @@ const STYLE_KEY = 'cb-music-style';
 // Switches the generated music to a preset. Rebuilds the instruments
 // (and restarts playback if it was playing) so the change is heard
 // straight away.
-function applyMusicStyle(key, { announce = true } = {}) {
+function applyMusicStyle(key, { announce = true, remember = false } = {}) {
   const preset = STYLE_PRESETS[key] || STYLE_PRESETS.lofi;
   currentStyle = preset;
+  magentaGroove = null;
   bpmRange.value = preset.bpm;
   bpmVal.textContent = preset.bpm;
   updateBpmFill();
@@ -778,6 +782,8 @@ function applyMusicStyle(key, { announce = true } = {}) {
 
   try { localStorage.setItem(STYLE_KEY, key); } catch (e) {}
   updateNowPlaying();
+  if (remember) saveMusicPreference();
+  if (lastRisk) refreshGroove();
   if (announce) {
     setMusicStatus(
       audioBuffer
@@ -794,7 +800,7 @@ if (styleSelect) {
   if (!STYLE_PRESETS[saved]) saved = 'lofi';
   styleSelect.value = saved;
   applyMusicStyle(saved, { announce: false });
-  styleSelect.addEventListener('change', () => applyMusicStyle(styleSelect.value));
+  styleSelect.addEventListener('change', () => applyMusicStyle(styleSelect.value, { remember: true }));
 }
 
 // ── "Now playing" line in the Playback panel ───
@@ -813,7 +819,7 @@ function updateNowPlaying() {
     const label = opt ? opt.textContent.trim() : (getStyle().name || 'Generated music');
     nameEl.textContent = label;
     nameEl.title = label;
-    kindEl.textContent = 'Generated';
+    kindEl.textContent = magentaGroove ? 'Generated · Magenta groove' : 'Generated';
   }
   // The stopped position depends on the source (song time or bars).
   if (!isPlaying && currentLine) currentLine.textContent = idlePositionLabel();
@@ -983,17 +989,25 @@ function startLoop() {
     chordIndex++;
   }, [...Array(4).keys()], '1n');
 
-  const leadSeq = new Tone.Sequence((time, i) => {
-    try { leadSynth.triggerAttackRelease(lead[i % lead.length], '8n', time); } catch(e) {}
+  // With a Magenta groove, the lead plays the style's 8 notes and then
+  // Magenta's 8-note continuation, and the drums alternate the style's
+  // bar with Magenta's answering bar. magentaGroove is read on every step,
+  // so a groove that arrives mid-playback joins in at the next note.
+  let leadStep = 0;
+  const leadSeq = new Tone.Sequence((time) => {
+    const notes = magentaGroove ? lead.concat(magentaGroove.lead) : lead;
+    try { leadSynth.triggerAttackRelease(notes[leadStep % notes.length], '8n', time); } catch(e) {}
+    leadStep++;
   }, [...Array(8).keys()], '4n');
 
   const drumSeq = new Tone.Sequence((time, i) => {
     const s = i % 16;
-    if (pattern.kick?.[s])    { try { kickSynth.triggerAttackRelease('C1','8n',time); } catch(e) {} }
-    if (pattern.snare?.[s])   { try { snareSynth.triggerAttackRelease('16n',time); } catch(e) {} }
-    if (pattern.hihat?.[s])   { try { hihatSynth.triggerAttackRelease('32n',time); } catch(e) {} }
-    if (pattern.openHat?.[s]) { try { openHihatSynth.triggerAttackRelease('8n',time); } catch(e) {} }
-  }, [...Array(16).keys()], '16n');
+    const bar = (i >= 16 && magentaGroove) ? magentaGroove.drums : pattern;
+    if (bar.kick?.[s])    { try { kickSynth.triggerAttackRelease('C1','8n',time); } catch(e) {} }
+    if (bar.snare?.[s])   { try { snareSynth.triggerAttackRelease('16n',time); } catch(e) {} }
+    if (bar.hihat?.[s])   { try { hihatSynth.triggerAttackRelease('32n',time); } catch(e) {} }
+    if (bar.openHat?.[s]) { try { openHihatSynth.triggerAttackRelease('8n',time); } catch(e) {} }
+  }, [...Array(32).keys()], '16n');
 
   bassSeq.start(0); padSeq.start(0); melodySeq.start(0);
   leadSeq.start('2m'); drumSeq.start(0);
@@ -1201,6 +1215,7 @@ bpmRange.addEventListener('input', () => {
   updateBpmFill();
   if (isPlaying) Tone.getTransport().bpm.value = parseInt(bpmRange.value);
 });
+bpmRange.addEventListener('change', () => saveMusicPreference());
 
 // ═══════════════════════════════════════════════
 // ANALYZE
@@ -1248,6 +1263,8 @@ analyzeBtn.addEventListener('click', async () => {
     renderIssues(lines.filter(l => l.severity !== 'clean'));
     updateStats(lines);
     highlightEditorLines(lines);
+    lastRisk = scoreLines(lines).riskLevel;
+    refreshGroove();
     // ✅ Save analysis session to history
     await saveAnalysisToHistory(code, savedLang, lines);
   } catch (err) {
@@ -1428,6 +1445,92 @@ function renderMlComplexity(result) {
   mlSummary.textContent   = result.summary || '';
 }
 
+// Severity-weighted score (warning 0.1, error 0.3, critical 0.6 per line)
+// and its risk level. Used for History and for Magenta's temperature.
+function scoreLines(lines) {
+  const count = sev => lines.filter(l => l.severity === sev).length;
+  const raw = lines.length
+    ? (count('warning') * 0.1 + count('error') * 0.3 + count('critical') * 0.6) / lines.length
+    : 0;
+  const fusionScore = Math.min(parseFloat(raw.toFixed(4)), 1.0);
+  let riskLevel = 'low';
+  if      (fusionScore >= 0.76) riskLevel = 'critical';
+  else if (fusionScore >= 0.51) riskLevel = 'high';
+  else if (fusionScore >= 0.26) riskLevel = 'medium';
+  return { fusionScore, riskLevel };
+}
+
+// ═══════════════════════════════════════════════
+// MAGENTA GROOVE + MUSIC PREFERENCES
+// ═══════════════════════════════════════════════
+// Asks magenta.js for a groove that continues the current style, sized to
+// the latest analysis' risk. Playback never waits for it: until it arrives
+// (or if Magenta can't load) the style's own patterns play.
+async function refreshGroove() {
+  if (!window.BugBeatMagenta || !lastRisk) return;
+  const request = ++grooveRequest;
+  const style = getStyle();
+  const groove = await BugBeatMagenta.generate({
+    loopPattern: style.loopPattern, leadNotes: style.leadNotes, risk: lastRisk
+  });
+  if (request !== grooveRequest) return;   // style or code changed meanwhile
+  if (!groove) {
+    setMusicStatus('Using the preset groove (Magenta could not load)', '');
+    return;
+  }
+  magentaGroove = groove;
+  updateNowPlaying();
+  setMusicStatus(`🥁 New Magenta groove ready (${groove.risk} risk code)`, 'ok');
+  saveMusicPreference();
+}
+
+// Remembers the style, tempo and latest groove on the server, so they come
+// back on the next login, on any device.
+async function saveMusicPreference() {
+  const key = styleSelect?.value;
+  if (!key || !STYLE_PRESETS[key]) return;
+  try {
+    await fetch(`${BACKEND_URL}/music-preferences/save`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({
+        search_query:    `preset:${key}`,
+        style_name:      key,
+        bpm:             parseInt(bpmRange.value, 10),
+        oscillator_type: getStyle().oscillatorType,
+        drum_pattern:    magentaGroove
+      })
+    });
+  } catch (e) {
+    console.warn('Could not save music preference:', e.message);
+  }
+}
+
+// Restores the latest saved style, tempo and groove after login.
+async function recallMusicPreference() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/music-preferences`, { headers: authHeaders() });
+    if (!res.ok) return;
+    // newest first; id breaks ties between saves made in the same second
+    const latest = ((await res.json()).preferences || []).sort((a, b) => b.id - a.id)[0];
+    if (!latest || !STYLE_PRESETS[latest.style_name] || !styleSelect) return;
+    styleSelect.value = latest.style_name;
+    applyMusicStyle(latest.style_name, { announce: false });
+    if (latest.bpm) {
+      bpmRange.value = latest.bpm;
+      bpmVal.textContent = bpmRange.value;
+      updateBpmFill();
+    }
+    if (latest.drum_pattern?.drums && latest.drum_pattern?.lead) {
+      magentaGroove = latest.drum_pattern;
+      updateNowPlaying();
+    }
+  } catch (e) {
+    console.warn('Could not load music preferences:', e.message);
+  }
+}
+if (cbToken) recallMusicPreference();
+
 // ═══════════════════════════════════════════════
 // SAVE ANALYSIS TO HISTORY
 // ═══════════════════════════════════════════════
@@ -1441,18 +1544,7 @@ async function saveAnalysisToHistory(code, lang, lines) {
     const issuesFound   = warningCount + errorCount + criticalCount;
     const totalLines    = lines.length;
 
-    // ── Compute fusion score ────────────────────
-    // Weighted: warning=0.1, error=0.3, critical=0.6
-    const rawScore = totalLines > 0
-      ? ((warningCount * 0.1) + (errorCount * 0.3) + (criticalCount * 0.6)) / totalLines
-      : 0;
-    const fusionScore = Math.min(parseFloat(rawScore.toFixed(4)), 1.0);
-
-    // ── Determine risk level ────────────────────
-    let riskLevel = 'low';
-    if      (fusionScore >= 0.76) riskLevel = 'critical';
-    else if (fusionScore >= 0.51) riskLevel = 'high';
-    else if (fusionScore >= 0.26) riskLevel = 'medium';
+    const { fusionScore, riskLevel } = scoreLines(lines);
 
     // ── Build issues array ──────────────────────
     const issues = lines
