@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=32" />
   <link rel="stylesheet" href="auth.css?v=17" />
-  <link rel="stylesheet" href="landing.css?v=2" />
+  <link rel="stylesheet" href="landing.css?v=3" />
 </head>
 <body class="ld-page">
 
@@ -81,29 +81,38 @@
       <h2>From code to beat in three steps</h2>
       <ol class="ld-flow">
         <li>
-          <div class="ld-mini ld-mini--editor" aria-hidden="true">
-            <span class="ld-mini__pill">Python ▾</span>
-            <code><span class="ld-mini__ln">1</span>def find_max(numbers):</code>
-            <code><span class="ld-mini__ln">2</span>    largest = 0</code>
+          <div class="ld-mini ld-mini--editor">
+            <select id="ld-flow-lang" class="ld-mini__pill" aria-label="Language for the example">
+              <option value="python">Python</option>
+              <option value="javascript">JavaScript</option>
+              <option value="typescript">TypeScript</option>
+              <option value="java">Java</option>
+              <option value="c">C</option>
+              <option value="cpp">C++</option>
+              <option value="kotlin">Kotlin</option>
+              <option value="php">PHP</option>
+            </select>
+            <code aria-hidden="true"><span class="ld-mini__ln">1</span><span id="ld-flow-l1"></span></code>
+            <code aria-hidden="true"><span class="ld-mini__ln">2</span><span id="ld-flow-l2"></span><span class="ld-caret" id="ld-flow-caret"></span></code>
           </div>
           <p class="ld-flow__tag">01 · write</p>
           <h3>Paste your code</h3>
           <p>Pick the language or leave it on Auto-detect. No code handy? Load a demo.</p>
         </li>
         <li>
-          <div class="ld-mini ld-mini--issue" aria-hidden="true">
+          <div class="ld-mini ld-mini--issue ld-wait" id="ld-flow-issue" aria-hidden="true">
             <span class="ld-sev ld-sev--error">error</span>
             <span>Line 2 · logic</span>
-            <code>largest = numbers[0]</code>
+            <code>fix: <span id="ld-flow-fix"></span></code>
           </div>
           <p class="ld-flow__tag">02 · analyze</p>
           <h3>Find what's wrong</h3>
           <p>BugBeat checks every line for syntax, logic and runtime errors, writes a fix for each one and rates how risky the code is overall.</p>
         </li>
         <li>
-          <div class="ld-mini ld-mini--wave" aria-hidden="true">
-            <span class="ld-mini__play">▶</span>
-            <span class="ld-mini__bars"><i></i><i class="e"></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <div class="ld-mini ld-mini--wave ld-wait" id="ld-flow-wave">
+            <button type="button" class="ld-mini__play" id="ld-flow-play" aria-label="Play the beat for this example">▶</button>
+            <span class="ld-mini__bars" aria-hidden="true"><i></i><i class="e"></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
           </div>
           <p class="ld-flow__tag">03 · listen</p>
           <h3>Hear it, then fix it</h3>
@@ -202,6 +211,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
   <script src="theme.js"></script>
   <script src="rain.js"></script>
-  <script src="landing.js?v=1"></script>
+  <script src="landing.js?v=2"></script>
 </body>
 </html>

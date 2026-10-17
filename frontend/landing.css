@@ -251,17 +251,39 @@
 .ld-mini__ln { color: var(--text-muted); display: inline-block; width: 1.4em; }
 .ld-mini__pill {
   align-self: flex-start;
-  font-size: 0.7rem;
-  padding: 0 0.5em;
+  font: 0.72rem var(--font-code);
+  padding: 0.1em 0.4em;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  color: var(--text-muted);
+  background: var(--bg-input);
+  color: var(--text);
+  cursor: pointer;
 }
+.ld-mini__pill:hover { border-color: var(--accent); }
+.ld-mini__pill:focus-visible, .ld-mini__play:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ld-caret {
+  display: inline-block;
+  width: 0.55em;
+  height: 1.05em;
+  vertical-align: text-bottom;
+  background: var(--accent);
+  animation: ld-blink 1s steps(1) infinite;
+}
+@keyframes ld-blink { 50% { opacity: 0; } }
+/* steps 2 and 3 stay dim until step 1 has finished typing */
+.ld-wait { opacity: 0.35; filter: grayscale(0.8); }
+.ld-mini--issue, .ld-mini--wave { transition: opacity 0.4s, filter 0.4s; }
+.ld-mini__bars i.e.is-hit { animation: ld-hit 0.5s ease-out; }
+@keyframes ld-hit { 0% { transform: scaleY(1.25); filter: brightness(1.5); } 100% { transform: none; } }
+.ld-mini__bars i { transform-origin: bottom; transition: opacity 0.15s; }
+.ld-mini__bars i.is-active { opacity: 1; }
 .ld-mini--issue { border-left: 3px solid var(--error); color: var(--text); }
 .ld-mini--issue code { color: var(--clean); }
 .ld-mini--wave { flex-direction: row; align-items: center; gap: 0.7rem; }
 .ld-mini__play {
   flex: none;
+  border: none;
+  cursor: pointer;
   width: 32px; height: 32px;
   display: grid; place-items: center;
   border-radius: 50%;
@@ -438,4 +460,8 @@
   .ld-tile--wide { flex-direction: column; align-items: stretch; }
   .ld-code { font-size: 0.8rem; }
   .ld-hero__cta .ld-btn { flex: 1 1 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ld-caret, .ld-mini__bars i.e.is-hit { animation: none; }
 }
