@@ -2,7 +2,6 @@
 //  BUGBEAT — server.js
 //  Endpoints:
 //  POST /analyze      → Gemini code analysis
-//  POST /music-search → Gemini music parameters
 //  POST /complexity   → ML complexity analysis
 //  POST /auth/signup  → Start sign-up: checks the email, emails a 6-digit code
 //  POST /auth/signup/verify → Check the code and create the account
@@ -10,6 +9,7 @@
 //  POST /auth/login   → Login + get JWT token
 //  POST /auth/google  → Login/signup via Google
 //  GET  /auth/me      → Get current user info
+//  PUT  /admin/users/:id/ban → Ban or unban a user (admins only)
 //  POST /auth/change-password → Change (or set) password while logged in
 //  POST /auth/admin-invite/check  → Is an admin invite link still usable?
 //  POST /auth/admin-invite/accept → Logged-in user accepts an admin invite
@@ -138,7 +138,7 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
           // default, even on tasks that don't need multi-step reasoning —
           // for a few seconds. Classifying each line's severity is exactly
           // that kind of task, so turning thinking off cuts a meaningful
-          // chunk off every /analyze and /music-search call.
+          // chunk off every /analyze call.
           thinkingConfig: { thinkingBudget: 0 }
         }
       })
@@ -152,153 +152,6 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
   const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) throw new Error('Gemini returned an empty response.');
   return rawText.replace(/```json|```/g, '').trim();
-}
-
-// ── Helper: sanitize a Gemini-generated music style ────────────
-// Gemini doesn't always follow the requested schema/ranges exactly.
-// Tone.js throws on bad values (e.g. an unknown oscillator type), which
-// can kill playback mid-song. Clamp/validate everything before it
-// ever reaches the frontend.
-const VALID_OSCILLATORS = new Set(['sine', 'triangle', 'sawtooth', 'square']);
-const VALID_NOISE_TYPES = new Set(['white', 'pink', 'brown']);
-
-function clampNum(val, min, max, fallback) {
-  const n = typeof val === 'number' && Number.isFinite(val) ? val : fallback;
-  return Math.min(max, Math.max(min, n));
-}
-
-// Tone.js needs exact note syntax: a pitch class A-G, an optional sharp/flat
-// (# or b, once or twice), then an octave number. Anything else (lowercase
-// "c4", unicode flat "♭", missing octave, etc.) throws — and since every
-// triggerAttackRelease call is wrapped in a silent try/catch, a bad note
-// doesn't crash the app, it just drops that beat, sounding like the music
-// randomly cuts in and out.
-const NOTE_RE = /^[A-G](#{1,2}|b{1,2})?-?\d+$/;
-
-function isValidNote(n) {
-  return typeof n === 'string' && NOTE_RE.test(n.trim());
-}
-
-function sanitizeNotes(arr, fallback) {
-  return Array.isArray(arr) && arr.length && arr.every(isValidNote) ? arr : fallback;
-}
-
-function sanitizeChords(arr, fallback) {
-  return Array.isArray(arr) && arr.length &&
-    arr.every(c => Array.isArray(c) && c.length && c.every(isValidNote))
-    ? arr : fallback;
-}
-
-function sanitizeBeatArray(arr, fallback) {
-  return Array.isArray(arr) && arr.length === fallback.length ? arr : fallback;
-}
-
-// Asking an LLM to freehand-compose a 16-step kick/snare/hihat pattern from
-// scratch turns out to be unreliable: across dozens of test searches
-// spanning several genres, Gemini kept returning the exact same generic
-// four-on-the-floor pattern regardless of the requested style, even when the
-// prompt explicitly told it to vary the rhythm. Composing novel binary step
-// sequences isn't something language models do reliably — they regress to
-// the most common/"safe" pattern. Instead, Gemini only has to pick a genre
-// TAG (something LLMs are very reliable at), and the actual 16-step arrays
-// come from these hand-written, genuinely genre-distinct presets. A couple
-// of genres carry more than one variant so repeat searches in the same
-// genre don't feel identical either.
-const RHYTHM_PRESETS = {
-  four_on_floor: [ // house / EDM / dance-pop
-    { kick: [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] },
-    { kick: [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], openHat: [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0] }
-  ],
-  one_drop_reggae: [ // reggae / dub — kick+snare together on beat 3, nothing on beat 1
-    { kick: [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], snare: [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], hihat: [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }
-  ],
-  trap: [ // trap / modern hip-hop — sparse syncopated kick, backbeat clap, rolling hats
-    { kick: [1,0,0,1,0,0,1,0,0,0,1,0,0,0,0,0], snare: [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], hihat: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0] }
-  ],
-  boom_bap: [ // 90s hip-hop — laid-back kick/snare, steady 8th hats
-    { kick: [1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] },
-    { kick: [1,0,0,1,0,0,0,0,0,0,1,0,0,1,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }
-  ],
-  rock_driving: [ // rock / punk / pop-rock — driving 8th-note kick
-    { kick: [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }
-  ],
-  ballad_sparse: [ // slow ballad / acoustic — mostly empty, gentle pulse
-    { kick: [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], snare: [0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0], hihat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }
-  ],
-  swing_jazz: [ // jazz / lo-fi — swung, sparse brushes
-    { kick: [1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1], openHat: [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] }
-  ],
-  disco_funk: [ // disco / funk — busy hats, open hat on the offbeats
-    { kick: [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0], snare: [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0], hihat: [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], openHat: [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0] }
-  ]
-};
-
-function pickRhythmPattern(rhythmFeel) {
-  const variants = RHYTHM_PRESETS[rhythmFeel] || RHYTHM_PRESETS.four_on_floor;
-  const chosen   = variants[Math.floor(Math.random() * variants.length)];
-  return {
-    kick:    [...chosen.kick],
-    snare:   [...chosen.snare],
-    hihat:   [...chosen.hihat],
-    openHat: [...chosen.openHat]
-  };
-}
-
-function sanitizeStyle(raw = {}) {
-  const FALLBACK = {
-    scale: ['C3','Eb3','F3','G3','Bb3','C4','Eb4','F4','G4','Bb4'],
-    chordProgression: [['C4','Eb4','G4'],['Bb3','D4','F4'],['Ab3','C4','Eb4'],['G3','B3','D4']],
-    bassLine: ['C2','C2','Bb1','Bb1','Ab1','Ab1','G1','G1'],
-    padChords: [['C4','Eb4','G4'],['Bb3','D4','F4'],['Ab3','C4','Eb4'],['G3','Bb3','D4']],
-    leadNotes: ['G4','Bb4','C5','Eb5','F5','G5','Bb5','C6'],
-    envelope: { attack: 0.05, decay: 0.3, sustain: 0.4, release: 0.8 },
-    drumKit: {
-      kickPitchDecay: 0.06,
-      kickOctaves: 8,
-      snareNoiseType: 'white',
-      hihatFrequency: 400,
-      hihatDecay: 0.04
-    }
-  };
-
-  return {
-    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name : 'Generated Style',
-    description: typeof raw.description === 'string' ? raw.description : '',
-    bpm: Math.round(clampNum(raw.bpm, 60, 180, 90)),
-    oscillatorType: VALID_OSCILLATORS.has(raw.oscillatorType) ? raw.oscillatorType : 'triangle',
-    scale: sanitizeNotes(raw.scale, FALLBACK.scale),
-    chordProgression: sanitizeChords(raw.chordProgression, FALLBACK.chordProgression),
-    bassLine: sanitizeNotes(raw.bassLine, FALLBACK.bassLine),
-    padChords: sanitizeChords(raw.padChords, FALLBACK.padChords),
-    leadNotes: sanitizeNotes(raw.leadNotes, FALLBACK.leadNotes),
-    chordMap: {
-      clean:    sanitizeNotes(raw.chordMap?.clean,    ['C4','G4']),
-      warning:  sanitizeNotes(raw.chordMap?.warning,  ['Bb3','F4']),
-      error:    sanitizeNotes(raw.chordMap?.error,    ['Eb3','Bb3']),
-      critical: sanitizeNotes(raw.chordMap?.critical, ['C3','Gb3'])
-    },
-    envelope: {
-      attack:  clampNum(raw.envelope?.attack,  0, 2, FALLBACK.envelope.attack),
-      decay:   clampNum(raw.envelope?.decay,   0, 2, FALLBACK.envelope.decay),
-      sustain: clampNum(raw.envelope?.sustain, 0, 1, FALLBACK.envelope.sustain),
-      release: clampNum(raw.envelope?.release, 0, 3, FALLBACK.envelope.release)
-    },
-    reverbWet: clampNum(raw.reverbWet, 0, 1, 0.4),
-    chorusWet: clampNum(raw.chorusWet, 0, 1, 0.2),
-    volume: clampNum(raw.volume, -30, -4, -14),
-    // Gemini picks the genre TAG (rhythmFeel); the actual 16-step
-    // kick/snare/hihat/openHat arrays come from our own hand-written,
-    // genuinely genre-distinct presets — see RHYTHM_PRESETS above for why.
-    rhythmFeel: RHYTHM_PRESETS[raw.rhythmFeel] ? raw.rhythmFeel : 'four_on_floor',
-    loopPattern: pickRhythmPattern(raw.rhythmFeel),
-    drumKit: {
-      kickPitchDecay: clampNum(raw.drumKit?.kickPitchDecay, 0.02, 0.15, FALLBACK.drumKit.kickPitchDecay),
-      kickOctaves:    clampNum(raw.drumKit?.kickOctaves, 4, 10, FALLBACK.drumKit.kickOctaves),
-      snareNoiseType: VALID_NOISE_TYPES.has(raw.drumKit?.snareNoiseType) ? raw.drumKit.snareNoiseType : FALLBACK.drumKit.snareNoiseType,
-      hihatFrequency: clampNum(raw.drumKit?.hihatFrequency, 200, 800, FALLBACK.drumKit.hihatFrequency),
-      hihatDecay:     clampNum(raw.drumKit?.hihatDecay, 0.01, 0.2, FALLBACK.drumKit.hihatDecay)
-    }
-  };
 }
 
 // ── Health check ───────────────────────────────
@@ -426,126 +279,6 @@ ${code}
     });
   } catch (err) {
     console.error('/analyze error:', err.message);
-    res.status(502).json({ error: err.message });
-  }
-});
-
-// ── POST /music-search ─────────────────────────
-app.post('/music-search', async (req, res) => {
-  const { query } = req.body;
-  if (!query?.trim()) return res.status(400).json({ error: 'Missing or empty "query" field.' });
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
-
-  const prompt = `You are a music parameter engine for a web app called BugBeat that turns code errors into music.
-
-The user searched for a music style or song: "${query}"
-
-If "${query}" sounds like a real song title or artist you recognize, recall its ACTUAL known
-characteristics as accurately as you can and use them as hard anchors, not loose suggestions:
-- its real approximate BPM/tempo
-- its real key or scale (major/minor, and roughly which key)
-- its real genre and era (e.g. 2010s OPM pop-rock, 2020s future bass, 90s boom-bap)
-- its real typical instrumentation and production texture (e.g. acoustic guitar-driven, 808-heavy,
-  synth-pad-washed, live-drum-kit-driven)
-Getting the tempo, key, and genre right is what will make this actually feel like the searched song —
-prioritize accuracy on those four anchors above everything else below.
-
-Within those anchors, generate an ORIGINAL melody, chord voicing, and rhythm pattern idiomatic to that
-exact genre/era/instrumentation — do NOT attempt to reproduce the song's actual copyrighted melody,
-lyrics, or exact chord-for-chord progression; you likely don't remember it precisely anyway, and BugBeat
-only needs something that captures the song's tempo/key/genre/texture, not a cover of it.
-
-If "${query}" is not a recognizable song/artist (e.g. a mood or genre description), just design an
-original style matching that description directly.
-
-Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
-
-The JSON below shows the REQUIRED STRUCTURE ONLY — every value in it, especially "leadNotes", is a
-placeholder. Do NOT copy these literal example values into your answer. Every field must be freshly
-generated to match THIS specific song/style's genre and mood, and two different queries must never
-produce the same leadNotes.
-
-{
-  "name": "Short descriptive name of the generated style (e.g. 'Dark Jazz Inspired', 'Upbeat Pop Vibe')",
-  "description": "One sentence describing the musical feel",
-  "bpm": 90,
-  "oscillatorType": "triangle",
-  "scale": ["C3","Eb3","F3","G3","Bb3","C4","Eb4","F4","G4","Bb4"],
-  "chordProgression": [
-    ["C4","Eb4","G4"],
-    ["Bb3","D4","F4"],
-    ["Ab3","C4","Eb4"],
-    ["G3","B3","D4"]
-  ],
-  "bassLine": ["C2","C2","Bb1","Bb1","Ab1","Ab1","G1","G1"],
-  "padChords": [
-    ["C4","Eb4","G4"],
-    ["Bb3","D4","F4"],
-    ["Ab3","C4","Eb4"],
-    ["G3","Bb3","D4"]
-  ],
-  "leadNotes": ["G4","Bb4","C5","Eb5","F5","G5","Bb5","C6"],
-  "chordMap": {
-    "clean":    ["C4","G4"],
-    "warning":  ["Bb3","F4"],
-    "error":    ["Eb3","Bb3"],
-    "critical": ["C3","Gb3"]
-  },
-  "envelope": {
-    "attack": 0.05,
-    "decay": 0.3,
-    "sustain": 0.4,
-    "release": 0.8
-  },
-  "reverbWet": 0.4,
-  "chorusWet": 0.2,
-  "volume": -14,
-  "rhythmFeel": "four_on_floor",
-  "drumKit": {
-    "kickPitchDecay": 0.06,
-    "kickOctaves": 8,
-    "snareNoiseType": "white",
-    "hihatFrequency": 400,
-    "hihatDecay": 0.04
-  }
-}
-
-Rules:
-- BPM between 60 and 180
-- oscillatorType: "sine" | "triangle" | "sawtooth" | "square" — this tone color is shared by the bass, pads, lead AND melody, so pick it to match the overall style (e.g. "sine" for soft/chill, "sawtooth" for aggressive/energetic)
-- Scale must have 8-12 notes
-- bassLine must have 6-8 notes, in a low register (octaves 1-2), matching the style's mood
-- padChords must have 4 chords, each a 3-note array, matching the style's mood
-- leadNotes must have 6-8 notes, in a higher register (octaves 4-6), matching the style's mood — this is
-  a melodic PHRASE with its own contour (skips, repeats, direction changes), not a plain ascending or
-  descending scale run; it should sound distinct from the leadNotes of a differently-styled song
-- chordMap must have all four keys: clean, warning, error, critical
-- drumKit.kickPitchDecay: 0.02-0.15 (lower = tighter/punchier kick, higher = deeper/boomier kick)
-- drumKit.kickOctaves: 4-10 (higher = more pitch sweep/punch)
-- drumKit.snareNoiseType: "white" | "pink" | "brown" (white = crisp/pop, pink = warmer, brown = deep/soft)
-- drumKit.hihatFrequency: 200-800 (higher = brighter/crisper hi-hat, lower = darker/duller)
-- drumKit.hihatDecay: 0.01-0.2 (lower = tighter/closed, higher = looser/open feel)
-- rhythmFeel: pick the ONE tag below that best matches this song/style's actual drum-pattern feel — this
-  choice matters more than almost anything else here, since it's the main thing that will make the beat
-  actually sound like the right genre instead of generic pop:
-  "four_on_floor"    — house / EDM / dance-pop / most upbeat mainstream pop
-  "one_drop_reggae"  — reggae / dub
-  "trap"             — trap / modern hip-hop / drill
-  "boom_bap"         — 90s-2000s hip-hop / OPM hip-hop
-  "rock_driving"     — rock / punk / pop-rock / metal
-  "ballad_sparse"    — slow ballads, acoustic, sad/soft songs
-  "swing_jazz"       — jazz, lo-fi, swing, bossa nova
-  "disco_funk"       — disco, funk, soul`;
-
-  try {
-    const text   = await callGemini(apiKey, prompt, 0.7);
-    const parsed = JSON.parse(text);
-    const style  = sanitizeStyle(parsed);
-    res.json({ style });
-  } catch (err) {
-    console.error('/music-search error:', err.message);
     res.status(502).json({ error: err.message });
   }
 });
@@ -877,6 +610,9 @@ app.post('/auth/login', authLimiter, loginEmailLimiter, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
+    const banned = await banMessage(user.id);
+    if (banned) return res.status(403).json({ error: banned });
+
     // Generate token
     const token = generateToken({
       userId   : user.id,
@@ -917,6 +653,24 @@ app.post('/auth/login', authLimiter, loginEmailLimiter, async (req, res) => {
     res.status(500).json({ error: 'Login failed. Please try again.', ref: errorRef(err) });
   }
 });
+
+// ── Banned accounts ────────────────────────────
+// users.banned_at / users.ban_reason (see the migration). Returns the ban
+// message for a banned user, or null. Quietly allows everyone if the
+// columns haven't been added yet, so login keeps working before the
+// migration runs. (Checked on every login, so it starts working as soon
+// as the columns exist, without a restart.)
+async function banMessage(userId) {
+  try {
+    const [[row]] = await db.query('SELECT banned_at, ban_reason FROM users WHERE id = ? LIMIT 1', [userId]);
+    if (!row?.banned_at) return null;
+    return 'This account has been banned' + (row.ban_reason ? ` (reason: ${row.ban_reason})` : '') +
+           '. Contact the BugBeat team if you think this is a mistake.';
+  } catch (err) {
+    if (err.code === 'ER_BAD_FIELD_ERROR') return null;
+    throw err;
+  }
+}
 
 // ── POST /auth/google ───────────────────────────
 // Accepts the ID token Google's Identity Services library hands the
@@ -1005,6 +759,9 @@ app.post('/auth/google', authLimiter, async (req, res) => {
         );
       }
     }
+
+    const banned = await banMessage(user.id);
+    if (banned) return res.status(403).json({ error: banned });
 
     const token = generateToken({
       userId   : user.id,
@@ -2464,15 +2221,22 @@ app.get('/admin/stats', requireAdmin, async (req, res) => {
 
 // ── GET /admin/users ───────────────────────────
 app.get('/admin/users', requireAdmin, async (req, res) => {
-  try {
-    const [rows] = await db.query(`
-      SELECT u.id, u.username, u.email, u.role, u.created_at, u.last_login,
+  const list = banCols => db.query(`
+      SELECT u.id, u.username, u.email, u.role, u.created_at, u.last_login,${banCols}
              COUNT(a.id) as total_analyses
       FROM users u
       LEFT JOIN analyses a ON a.user_id = u.id
       GROUP BY u.id
       ORDER BY u.created_at DESC
     `);
+  try {
+    let rows;
+    try {
+      [rows] = await list(' u.banned_at, u.ban_reason,');
+    } catch (err) {
+      if (err.code !== 'ER_BAD_FIELD_ERROR') throw err;
+      [rows] = await list('');   // ban columns not added yet
+    }
     res.json({ users: rows });
   } catch (err) {
     res.status(500).json({ error: 'Could not fetch users.' });
@@ -2516,6 +2280,38 @@ app.put('/admin/users/:id/role', requireAdmin, async (req, res) => {
     res.json({ message: `User role updated to ${role}.` });
   } catch (err) {
     res.status(500).json({ error: 'Could not update role.' });
+  }
+});
+
+// ── PUT /admin/users/:id/ban ───────────────────
+// { banned: true, reason } bans: the user is signed out everywhere and
+// can't log in (password or Google) until unbanned. { banned: false }
+// lifts the ban. Admins can't be banned; demote them first.
+app.put('/admin/users/:id/ban', requireAdmin, async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const banned = req.body?.banned === true;
+  const reason = String(req.body?.reason || '').trim().slice(0, 255) || null;
+  if (id === req.user.userId) {
+    return res.status(400).json({ error: 'You cannot ban your own account.' });
+  }
+  try {
+    const [[target]] = await db.query('SELECT id, role FROM users WHERE id = ? LIMIT 1', [id]);
+    if (!target) return res.status(404).json({ error: 'User not found.' });
+    if (banned && target.role === 'admin') {
+      return res.status(400).json({ error: 'Demote this admin before banning them.' });
+    }
+    await db.query(
+      'UPDATE users SET banned_at = ?, ban_reason = ? WHERE id = ?',
+      banned ? [new Date(), reason, id] : [null, null, id]
+    );
+    if (banned) await db.query('DELETE FROM sessions WHERE user_id = ?', [id]);
+    res.json({ message: banned ? 'User banned.' : 'Ban lifted.' });
+  } catch (err) {
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      return res.status(500).json({ error: 'Run the ban migration first (users.banned_at and users.ban_reason are missing).' });
+    }
+    console.error('/admin/users/:id/ban error:', err.message);
+    res.status(500).json({ error: 'Could not update the ban.' });
   }
 });
 

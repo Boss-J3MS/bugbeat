@@ -65,6 +65,18 @@
   z-index: 2;
 }
 
+/* Link back to the landing page, top-left of the form panel. */
+.auth-home-link {
+  position: absolute;
+  top: 1.15rem;
+  left: 1.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-decoration: none;
+}
+.auth-home-link:hover { color: var(--accent); }
+.auth-home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+
 /* ── Code-rain background ─────────────────────── */
 /* Fills the visual panel (not the whole page) — drawn and animated in
    rain.js, sized to that panel via ResizeObserver. Nothing else ever

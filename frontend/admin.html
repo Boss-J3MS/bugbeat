@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=29" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=9" />
+  <link rel="stylesheet" href="admin.css?v=10" />
 </head>
 <body>
 
@@ -330,6 +330,10 @@
   <div id="confirm-modal" class="admin-modal" hidden>
     <div class="admin-modal__box">
       <p id="confirm-msg" class="admin-modal__msg"></p>
+      <label id="confirm-input-wrap" class="admin-modal__field" hidden>
+        <span>Reason (the user sees this when they try to log in)</span>
+        <input id="confirm-input" type="text" class="cb-input cb-input--search" maxlength="255" placeholder="Optional" />
+      </label>
       <div class="admin-modal__actions">
         <button id="confirm-yes" class="cb-btn cb-btn--primary">Confirm</button>
         <button id="confirm-no" class="cb-btn cb-btn--ghost">Cancel</button>
@@ -512,11 +516,14 @@
 
     // ── Confirm modal ──────────────────────────
     let confirmResolve = null;
-    function confirm(msg) {
+    function confirm(msg, { withReason = false } = {}) {
       return new Promise(resolve => {
         confirmResolve = resolve;
         document.getElementById('confirm-msg').textContent = msg;
+        document.getElementById('confirm-input').value = '';
+        document.getElementById('confirm-input-wrap').hidden = !withReason;
         document.getElementById('confirm-modal').hidden = false;
+        if (withReason) document.getElementById('confirm-input').focus();
       });
     }
     document.getElementById('confirm-yes').addEventListener('click', () => {
@@ -704,7 +711,8 @@
           <td>${esc(u.id)}</td>
           <td>${esc(u.username)}</td>
           <td>${esc(u.email)}</td>
-          <td><span class="admin-role admin-role--${esc(u.role)}">${esc(u.role)}</span></td>
+          <td><span class="admin-role admin-role--${esc(u.role)}">${esc(u.role)}</span>${u.banned_at ? `
+            <span class="admin-role admin-role--banned" title="${esc(u.ban_reason || 'No reason given')}">banned</span>` : ''}</td>
           <td>${esc(u.total_analyses)}</td>
           <td>${formatDate(u.created_at)}</td>
           <td>${u.last_login ? formatDate(u.last_login) : '—'}</td>
@@ -714,6 +722,12 @@
                 data-action="toggle-role" data-id="${esc(u.id)}" data-role="${esc(u.role)}">
                 ${u.role === 'admin' ? 'Demote' : 'Promote'}
               </button>
+              ${u.role !== 'admin' ? `
+              <button class="cb-btn cb-btn--ghost admin-btn-sm ${u.banned_at ? '' : 'admin-btn-danger'}"
+                data-action="toggle-ban" data-id="${esc(u.id)}" data-username="${esc(u.username)}"
+                data-banned="${u.banned_at ? '1' : ''}">
+                ${u.banned_at ? 'Unban' : 'Ban'}
+              </button>` : ''}
               <button class="cb-btn cb-btn--ghost admin-btn-sm admin-btn-danger"
                 data-action="delete-user" data-id="${esc(u.id)}" data-username="${esc(u.username)}">
                 Delete
@@ -735,6 +749,8 @@
         toggleRole(id, btn.dataset.role);
       } else if (btn.dataset.action === 'delete-user') {
         deleteUser(id, btn.dataset.username);
+      } else if (btn.dataset.action === 'toggle-ban') {
+        toggleBan(id, btn.dataset.username, !!btn.dataset.banned);
       }
     });
 
@@ -758,6 +774,23 @@
         await adminFetch(`/admin/users/${id}/role`, { method: 'PUT', body: JSON.stringify({ role: newRole }) });
       } catch (err) {
         setStatus(`Could not change the role: ${err.message}`);
+      }
+      loadUsers();
+    }
+
+    async function toggleBan(id, username, isBanned) {
+      const ok = await confirm(isBanned
+        ? `Lift the ban on "${username}"? They will be able to log in again.`
+        : `Ban "${username}"? They are signed out everywhere and can't log in until you unban them.`,
+        { withReason: !isBanned });
+      if (!ok) return;
+      try {
+        await adminFetch(`/admin/users/${id}/ban`, {
+          method: 'PUT',
+          body: JSON.stringify({ banned: !isBanned, reason: document.getElementById('confirm-input').value })
+        });
+      } catch (err) {
+        setStatus(`Could not update the ban: ${err.message}`);
       }
       loadUsers();
     }

@@ -187,6 +187,7 @@
 }
 .admin-role--admin { background: #1de4a820; color: var(--accent); border: 1px solid var(--accent); }
 .admin-role--user  { background: var(--bg-input); color: var(--text-muted); border: 1px solid var(--border); }
+.admin-role--banned { background: var(--critical-bg); color: var(--critical); border: 1px solid var(--critical); margin-left: 4px; }
 
 /* ── Action buttons ───────────────────────────── */
 .admin-actions { display: flex; gap: 4px; }
@@ -236,6 +237,8 @@
   line-height: 1.5;
 }
 .admin-modal__actions { display: flex; gap: 8px; justify-content: flex-end; }
+.admin-modal__field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 1.25rem; font-size: 0.8rem; color: var(--text-muted); }
+.admin-modal__field input { width: 100%; }
 
 /* ── Admin responsive ────────────────────────── */
 @media (max-width: 768px) {
