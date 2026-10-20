@@ -7,11 +7,14 @@
 #    POST /train
 # ═══════════════════════════════════════════════
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 import asyncio
+import hmac
+import os
 
 from extractor import extract_features, extract_per_function, get_line_risk_map
 from generic_extractor import extract_features_generic, extract_per_function_generic, detect_language
@@ -51,6 +54,21 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
+# ── Shared key ─────────────────────────────────
+# When ML_API_KEY is set (on Cloud Run), every endpoint except /health
+# needs the same key in the x-api-key header. Only the BugBeat backend has
+# it, so nobody else can use the service or start /train. Without the
+# variable (running locally) everything stays open as before.
+ML_API_KEY = os.environ.get('ML_API_KEY', '')
+
+@app.middleware('http')
+async def require_api_key(request: Request, call_next):
+    if ML_API_KEY and request.url.path != '/health':
+        sent = request.headers.get('x-api-key', '')
+        if not hmac.compare_digest(sent, ML_API_KEY):
+            return JSONResponse(status_code=401, content={'detail': 'Missing or wrong API key.'})
+    return await call_next(request)
+
 # ── Request/Response models ────────────────────
 class ComplexityRequest(BaseModel):
     code: str
@@ -87,7 +105,7 @@ async def analyze_complexity(req: ComplexityRequest):
     # radon (extractor.py) parses a real Python AST, so it stays the
     # precise path for Python. It can't parse any other language, so
     # everything else goes through generic_extractor.py's lizard-based
-    # multi-language path instead.
+    # multi-language path instead (plus a javalang AST for Java).
     lang = (req.lang or 'auto').lower()
     if lang == 'auto':
         lang = detect_language(code)
@@ -140,6 +158,7 @@ async def analyze_complexity(req: ComplexityRequest):
         'h_bugs':          round(features.get('h_bugs', 0), 3),
         'nested_blocks':   features.get('nested_blocks', 0),
         'num_functions':   features.get('num_functions', 0),
+        'structure_parser': features.get('structure_parser', 'radon'),
     }
 
     return result

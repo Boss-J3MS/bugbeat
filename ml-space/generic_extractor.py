@@ -14,11 +14,20 @@
 #  standard maintainability-index formula computed
 #  from that — the same formula radon's mi_visit
 #  uses, just fed our own numbers instead of radon's.
+#
+#  Java also gets a real abstract syntax tree from
+#  `javalang`, which replaces the keyword counts
+#  (loops, conditions, try/catch, returns, classes,
+#  imports) with exact ones and counts recursive
+#  calls. javalang understands Java up to version 8;
+#  if it can't parse the code, the lizard/keyword
+#  numbers are used as before.
 # ═══════════════════════════════════════════════
 
 import re
 import math
 import lizard
+import javalang
 
 LANG_EXT = {
     'javascript': 'js', 'typescript': 'ts', 'java': 'java',
@@ -132,6 +141,51 @@ def _cc_rank(cc: int) -> str:
     return 'F'
 
 
+def _parse_java(code: str):
+    """Java AST, or None. Students often paste a single method or a few
+    statements, so those are wrapped in a class (and a method) first."""
+    attempts = (code,
+                'class __Snippet {\n' + code + '\n}',
+                'class __Snippet { void __snippet() {\n' + code + '\n} }')
+    for src in attempts:
+        try:
+            return javalang.parse.parse(src)
+        except Exception:   # javalang raises several error types
+            continue
+    return None
+
+
+def _java_ast_counts(code: str):
+    """Exact structural counts from the Java AST, or None if it can't be parsed."""
+    tree = _parse_java(code)
+    if tree is None:
+        return None
+    t = javalang.tree
+
+    def count(*node_types):
+        return sum(1 for nt in node_types for _ in tree.filter(nt))
+
+    try_parts = 0
+    for _, node in tree.filter(t.TryStatement):
+        try_parts += 1 + len(node.catches or []) + (1 if node.finally_block is not None else 0)
+
+    recursive = 0
+    for _, method in tree.filter(t.MethodDeclaration):
+        for _, call in method.filter(t.MethodInvocation):
+            if call.member == method.name and call.qualifier in (None, '', 'this'):
+                recursive += 1
+
+    return {
+        'num_loops':      count(t.ForStatement, t.WhileStatement, t.DoStatement),
+        'num_conditions': count(t.IfStatement, t.SwitchStatementCase, t.TernaryExpression),
+        'num_try_catch':  try_parts,
+        'num_returns':    count(t.ReturnStatement),
+        'num_classes':    sum(1 for _, n in tree.filter(t.TypeDeclaration) if n.name != '__Snippet'),
+        'num_imports':    len(tree.imports or []),
+        'num_recursive_calls': recursive,
+    }
+
+
 def extract_features_generic(code: str, lang: str) -> dict:
     fname  = f'snippet.{_ext_for(lang)}'
     result = lizard.analyze_file.analyze_source_code(fname, code)
@@ -177,7 +231,7 @@ def extract_features_generic(code: str, lang: str) -> dict:
     raw_mi   = 171 - 5.2 * math.log(v_safe) - 0.23 * cc_safe - 16.2 * math.log(loc_safe)
     maintainability = max(0.0, min(100.0, raw_mi * 100.0 / 171.0))
 
-    return {
+    features = {
         'loc': loc, 'lloc': sloc, 'sloc': sloc,
         'comments': comments,
         'comment_ratio': comments / max(loc, 1),
@@ -197,7 +251,16 @@ def extract_features_generic(code: str, lang: str) -> dict:
         'num_imports': len(re.findall(_KW_IMPORT, stripped)),
         'max_line_length': max((len(l) for l in lines), default=0),
         'avg_line_length': sum(len(l) for l in lines) / max(len(lines), 1),
+        'structure_parser': 'lizard',
     }
+
+    if (lang or '').lower() == 'java':
+        ast_counts = _java_ast_counts(code)
+        if ast_counts:
+            features.update(ast_counts)
+            features['structure_parser'] = 'javalang'
+
+    return features
 
 
 def extract_per_function_generic(code: str, lang: str) -> list:
