@@ -1098,6 +1098,7 @@ function startPlayback() {
 
     // Highlight active line in Monaco
     highlightActiveLine(beat.line);
+    animateBeat(beat);
 
     if (beat.severity === 'clean') {
       resetFx();
@@ -1882,6 +1883,8 @@ function renderSequencer(lines) {
   waveHoverLine = null;
   showWaveInfo(null);
 
+  animateIn([...bars.children], '--enter');
+
   playBtn.disabled = false;
   stopBtn.disabled = false;
   setTip(playBtn, 'Play / pause');
@@ -1935,6 +1938,34 @@ function stopWavePulse() {
   if (pulseFrame) cancelAnimationFrame(pulseFrame);
   pulseFrame = null;
   sequencer.querySelector('.cb-wave')?.style.setProperty('--pulse', '0');
+}
+
+// ── Visual feedback (Motion) ───────────────────
+// Motion (formerly Framer Motion) animates the visual cues that go with
+// the sound: every beat kicks its bar on the waveform (harder for worse
+// lines), a flagged line shakes its issue card into view, and new results
+// ease in. Skipped for reduced motion, or if the library didn't load.
+const HIT  = { clean: 0.2, warning: 0.35, error: 0.5, critical: 0.7 };
+const SHAKE = { warning: 3, error: 6, critical: 10 };
+const motionReady = () => !!window.Motion && !reduceMotion?.matches;
+
+function animateBeat(beat) {
+  if (!motionReady()) return;
+  const bar = sequencer.querySelector(`.cb-beat[data-line="${beat.line}"]`);
+  if (bar) Motion.animate(bar, { '--hit': [HIT[beat.severity] || 0.2, 0] }, { duration: 0.35, ease: 'easeOut' });
+  const px = SHAKE[beat.severity];
+  const card = px && issueList.querySelector(`.cb-issue[data-line="${beat.line}"]`);
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    Motion.animate(card, { x: [0, -px, px, -px / 2, px / 2, 0] }, { duration: 0.4 });
+  }
+}
+
+// Bars grow in (prop '--enter'), issue cards fade and slide up, one after another.
+function animateIn(els, prop) {
+  if (!motionReady() || !els.length) return;
+  const keyframes = prop ? { [prop]: [0, 1] } : { opacity: [0, 1], y: [8, 0] };
+  Motion.animate(els, keyframes, { duration: 0.3, delay: Motion.stagger(prop ? 0.008 : 0.04) });
 }
 
 function highlightIssue(lineNum) {
@@ -1993,6 +2024,8 @@ function renderIssues(issues) {
       setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
     });
   });
+
+  animateIn(issueList.querySelectorAll('.cb-issue'));
 
   issueList.querySelectorAll('.cb-issue').forEach(el => {
     el.addEventListener('click', () => {

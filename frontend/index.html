@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="style.css?v=33" />
   <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
@@ -675,6 +675,10 @@
   <!-- Tone.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
 
+  <!-- Motion (formerly Framer Motion): visual feedback synced to the music.
+       Loaded before Monaco's loader so it stays a plain global. -->
+  <script src="https://cdn.jsdelivr.net/npm/motion@12.23.12/dist/motion.js"></script>
+
   <!-- Monaco Editor loader -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.45.0/min/vs/loader.min.js"></script>
 
@@ -686,7 +690,7 @@
 
   <script src="popover.js?v=2"></script>
   <script src="magenta.js?v=1"></script>
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
   <script src="history.js?v=6"></script>
   <script src="notif-view.js?v=4"></script>
   <script src="banner.js"></script>

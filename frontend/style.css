@@ -670,7 +670,9 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   opacity: 0.85;
   /* Pulse with the music: short bars move most, tall ones barely, so
      nothing grows past the panel. */
-  transform: scaleY(calc(1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1)));
+  /* --hit (a kick on each beat) and --enter (grow-in) are animated by
+     Motion in app.js; both default to no effect. */
+  transform: scaleY(calc((1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1) + var(--hit, 0)) * var(--enter, 1)));
   transition: transform 0.12s ease-out, opacity 0.12s, box-shadow 0.12s, filter 0.12s;
   outline: none;
 }
@@ -685,7 +687,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 .cb-beat--active {
   opacity: 1;
   filter: brightness(1.35);
-  transform: scaleY(calc(1.1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1)));
+  transform: scaleY(calc((1.1 + var(--pulse) * var(--k, 0.3) * var(--kmul, 1) + var(--hit, 0)) * var(--enter, 1)));
   box-shadow: 0 0 10px 1px currentColor;
 }
 .cb-beat--clean.cb-beat--active    { color: var(--clean); }
