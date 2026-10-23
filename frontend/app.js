@@ -1410,20 +1410,32 @@ if (outputCloseBtn) outputCloseBtn.addEventListener('click', closeOutputPanel);
 // throws) so a slow or offline ML service can't break the main
 // Gemini-based Analyze flow it runs alongside.
 async function fetchComplexity(code, lang) {
+  const viaBackend = await postComplexity(`${BACKEND_URL}/complexity`, code, lang);
+  if (viaBackend) return viaBackend;
+  // Local route for checking: when the hosted backend can't reach an ML
+  // service, ask one running on this computer (python main.py, port 5000).
+  // On localhost the backend above already points there, so skip it.
+  if (BACKEND_URL.startsWith('http://localhost')) return null;
+  return postComplexity(`${LOCAL_ML_URL}/complexity`, code, lang);
+}
+
+const LOCAL_ML_URL = 'http://localhost:5000';
+
+async function postComplexity(url, code, lang) {
   try {
-    const res = await fetch(`${BACKEND_URL}/complexity`, {
+    const res = await fetch(url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ code, lang })
     });
     const data = await res.json();
     if (!res.ok) {
-      console.warn('ML complexity unavailable:', data?.error || res.status);
+      console.warn('ML complexity unavailable at', url, data?.error || data?.detail || res.status);
       return null;
     }
     return data;
   } catch (err) {
-    console.warn('Could not reach ML complexity service:', err.message);
+    console.warn('Could not reach ML complexity service at', url, err.message);
     return null;
   }
 }
