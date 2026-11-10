@@ -172,7 +172,10 @@
   modal.querySelectorAll('.cb-nv__filter').forEach(btn => {
     btn.addEventListener('click', () => {
       filter = btn.dataset.filter;
-      modal.querySelectorAll('.cb-nv__filter').forEach(b => b.classList.toggle('active', b === btn));
+      modal.querySelectorAll('.cb-nv__filter').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-pressed', String(b === btn));
+      });
       renderList();
     });
   });
@@ -189,11 +192,12 @@
       return `
         <button type="button" class="cb-nv__item${n.is_read ? '' : ' cb-nv__item--unread'}" data-id="${esc(n.id)}">
           <span class="cb-nv__item-icon" aria-hidden="true">${d.icon}</span>
+          ${n.is_read ? '' : '<span class="cb-sr-only">Unread: </span>'}
           <span class="cb-nv__item-body">
             <span class="cb-nv__item-msg">${esc(oneLine(n.message))}</span>
             <span class="cb-nv__item-time">${esc(ago(n.created_at))}</span>
           </span>
-          ${n.is_read ? '' : '<span class="cb-nv__dot" aria-label="Unread"></span>'}
+          ${n.is_read ? '' : '<span class="cb-nv__dot" aria-hidden="true"></span>'}
         </button>`;
     }).join('');
   }

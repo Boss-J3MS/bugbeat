@@ -27,24 +27,56 @@ const historyPageCtrl   = document.getElementById('history-page-ctrl');
 const restoreSessionBtn = document.getElementById('restore-session-btn');
 
 // ── Open / Close panel ─────────────────────────
+// Focus goes into the panel when it opens and back to the History button
+// when it closes, so keyboard and screen-reader users don't get lost.
+let historyReturnFocus = null;
+
+function openHistoryPanel() {
+  historyReturnFocus = document.activeElement;
+  historyPanel.classList.add('cb-history--open');
+  setTimeout(() => historySearchInput?.focus(), 50);
+}
+
+function closeHistoryPanel() {
+  if (!historyPanel?.classList.contains('cb-history--open')) return;
+  historyPanel.classList.remove('cb-history--open');
+  const back = historyReturnFocus || historyBtn;
+  if (back && typeof back.focus === 'function') back.focus();
+}
+
 if (historyBtn) {
   historyBtn.addEventListener('click', async () => {
-    historyPanel.classList.add('cb-history--open');
+    openHistoryPanel();
     await loadHistory();
   });
 }
 
 if (historyCloseBtn) {
-  historyCloseBtn.addEventListener('click', () => {
-    historyPanel.classList.remove('cb-history--open');
-  });
+  historyCloseBtn.addEventListener('click', closeHistoryPanel);
 }
 
 // Close on backdrop click
 if (historyPanel) {
   historyPanel.addEventListener('click', (e) => {
-    if (e.target === historyPanel) {
-      historyPanel.classList.remove('cb-history--open');
+    if (e.target === historyPanel) closeHistoryPanel();
+  });
+}
+
+// Escape closes History
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeHistoryPanel();
+});
+
+// Keyboard: Enter or Space opens a session card.
+if (historyList) {
+  historyList.addEventListener('keydown', (e) => {
+    const card = e.target.closest('.cb-history-card');
+    if (card && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      const id = Number(card.dataset.id);
+      selectHistorySession(id);
+      // The list is redrawn when a session is picked; keep focus on its card.
+      historyList.querySelector(`.cb-history-card[data-id="${id}"]`)?.focus();
     }
   });
 }
@@ -53,7 +85,7 @@ if (historyPanel) {
 // notification viewer's "View analysis" button).
 async function openHistorySession(id) {
   if (!historyPanel) return;
-  historyPanel.classList.add('cb-history--open');
+  openHistoryPanel();
   await loadHistory();
   // Page to wherever the session is in the list so its card is visible.
   const index = filteredHistory.findIndex(s => s.id === id);
@@ -100,8 +132,12 @@ if (historySearchInput) {
 function setHistoryFilter(filter, btn) {
   historyFilter = filter;
   historyPage   = 1;
-  document.querySelectorAll('.cb-history-filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.cb-history-filter-btn').forEach(b => {
+    b.classList.remove('active');
+    b.setAttribute('aria-pressed', 'false');
+  });
   btn.classList.add('active');
+  btn.setAttribute('aria-pressed', 'true');
   applyHistoryFilter();
 }
 
@@ -149,9 +185,13 @@ function renderHistoryList() {
     const riskLower = (s.risk_level || 'low').toLowerCase().replace(' ', '-');
     const langClass = getLangClass(s.language);
     const total     = (s.warning_count || 0) + (s.error_count || 0) + (s.critical_count || 0);
+    const label     = `${langName(s.language)} analysis, ${formatHistoryDate(s.created_at)}, ` +
+                      `${riskText(s.risk_level || 'low')} risk, ${total} issue${total === 1 ? '' : 's'}`;
     return `
       <div class="cb-history-card ${s.id === activeHistoryId ? 'active' : ''}"
-           data-id="${s.id}" onclick="selectHistorySession(${s.id})">
+           data-id="${s.id}" onclick="selectHistorySession(${s.id})"
+           role="button" tabindex="0" aria-label="${escHistory(label)}"
+           ${s.id === activeHistoryId ? 'aria-current="true"' : ''}>
         <div class="cb-history-card__top">
           <span class="cb-lang-badge cb-lang-badge--${langClass}">${langName(s.language)}</span>
           <span class="cb-history-card__time">${formatHistoryDate(s.created_at)}</span>
@@ -192,6 +232,11 @@ async function selectHistorySession(id) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to load session');
     renderHistoryDetail(data);
+    const a = data.analysis || {};
+    if (window.announce) {
+      announce(`Showing ${a.language ? langName(a.language) : 'the'} analysis from ${formatHistoryDate(a.created_at)}: ` +
+               `${a.issues_found || 0} issues, ${riskText(a.risk_level || 'low')} risk.`);
+    }
   } catch (err) {
     document.getElementById('h-detail-title').textContent = `⚠ ${err.message}`;
   }
@@ -226,7 +271,8 @@ function renderHistoryDetail(data) {
   } else {
     issueEl.innerHTML = issues.map(iss => `
       <div class="cb-history-issue">
-        <div class="cb-history-issue__dot" style="background:${sevColor(iss.severity)}"></div>
+        <div class="cb-history-issue__dot" style="background:${sevColor(iss.severity)}" aria-hidden="true"></div>
+        <span class="cb-sr-only">${escHistory(iss.severity || '')},</span>
         <span class="cb-history-issue__line">Ln ${Number(iss.line_number) || 0}</span>
         <div class="cb-history-issue__body">
           <span class="cb-history-issue__desc">${escHistory(iss.description || iss.code_snippet || '')}</span>
@@ -330,11 +376,11 @@ function renderPagination() {
   const totalPages = Math.ceil(filteredHistory.length / PAGE_SIZE);
   if (totalPages <= 1) { historyPageCtrl.innerHTML = ''; return; }
 
-  let html = `<button class="cb-pg-btn" onclick="goHistoryPage(${historyPage - 1})" ${historyPage === 1 ? 'disabled' : ''}>‹</button>`;
+  let html = `<button class="cb-pg-btn" aria-label="Previous page" onclick="goHistoryPage(${historyPage - 1})" ${historyPage === 1 ? 'disabled' : ''}>‹</button>`;
   for (let i = 1; i <= totalPages; i++) {
-    html += `<button class="cb-pg-btn ${i === historyPage ? 'active' : ''}" onclick="goHistoryPage(${i})">${i}</button>`;
+    html += `<button class="cb-pg-btn ${i === historyPage ? 'active' : ''}" aria-label="Page ${i}" ${i === historyPage ? 'aria-current="page"' : ''} onclick="goHistoryPage(${i})">${i}</button>`;
   }
-  html += `<button class="cb-pg-btn" onclick="goHistoryPage(${historyPage + 1})" ${historyPage === totalPages ? 'disabled' : ''}>›</button>`;
+  html += `<button class="cb-pg-btn" aria-label="Next page" onclick="goHistoryPage(${historyPage + 1})" ${historyPage === totalPages ? 'disabled' : ''}>›</button>`;
   historyPageCtrl.innerHTML = html;
 }
 

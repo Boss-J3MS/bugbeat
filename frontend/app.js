@@ -176,6 +176,13 @@ function renderNotifications() {
       item.setAttribute('role', 'menuitem');
       item.tabIndex = 0;
 
+      if (!n.is_read) {
+        const unread = document.createElement('span');
+        unread.className = 'cb-sr-only';
+        unread.textContent = 'Unread: ';
+        item.appendChild(unread);
+      }
+
       const msg = document.createElement('span');
       msg.className = 'cb-notif__item-msg';
       // Broadcasts are stored as "title\nmessage"; show them on one line.
@@ -211,6 +218,8 @@ function renderNotifications() {
     }
   }
   if (notifMarkAll) notifMarkAll.disabled = unreadCount === 0;
+  notifBtn?.setAttribute('aria-label',
+    unreadCount ? `Notifications, ${unreadCount} unread` : 'Notifications');
 }
 
 async function fetchNotifications() {
@@ -886,6 +895,34 @@ function setMusicStatus(msg, state) {
   musicStatus.className   = 'cb-music-status' + (state ? ' cb-music-status--' + state : '');
 }
 
+// ── Screen-reader announcements ────────────────
+// A hidden live region: whatever is put here is read out by screen
+// readers, for results that would otherwise only be seen on screen.
+const srAnnouncer = document.createElement('div');
+srAnnouncer.className = 'cb-sr-only';
+srAnnouncer.setAttribute('role', 'status');
+srAnnouncer.setAttribute('aria-live', 'polite');
+document.body.appendChild(srAnnouncer);
+
+function announce(msg) {
+  srAnnouncer.textContent = '';
+  // Set on the next tick so the same message is read again if repeated.
+  setTimeout(() => { srAnnouncer.textContent = msg; }, 50);
+}
+window.announce = announce;
+
+function analysisSummary(lines, risk) {
+  const count = sev => lines.filter(l => l.severity === sev).length;
+  const parts = [['critical', 'critical'], ['error', 'error'], ['warning', 'warning']]
+    .map(([sev, word]) => [count(sev), word])
+    .filter(([n]) => n > 0)
+    .map(([n, word]) => `${n} ${word}${n === 1 ? '' : 's'}`);
+  const total = lines.filter(l => l.severity !== 'clean').length;
+  if (!total) return `Analysis complete. No issues found in ${lines.length} lines.`;
+  return `Analysis complete. ${total} issue${total === 1 ? '' : 's'} found: ${parts.join(', ')}. ` +
+         `Risk level ${risk}. The issues are listed in the Detected Issues panel.`;
+}
+
 // ═══════════════════════════════════════════════
 // TONE.JS — FULL MULTI-LAYER ENGINE
 // ═══════════════════════════════════════════════
@@ -1265,6 +1302,7 @@ analyzeBtn.addEventListener('click', async () => {
     updateStats(lines);
     highlightEditorLines(lines);
     lastRisk = scoreLines(lines).riskLevel;
+    announce(analysisSummary(lines, lastRisk));
     refreshGroove();
     // ✅ Save analysis session to history
     await saveAnalysisToHistory(code, savedLang, lines);
@@ -1890,7 +1928,7 @@ function renderSequencer(lines) {
   const info = document.createElement('div');
   info.id = 'wave-info';
   info.className = 'cb-wave__info';
-  info.setAttribute('aria-live', 'polite');
+  info.setAttribute('aria-hidden', 'true');
   sequencer.append(wave, info);
   waveHoverLine = null;
   showWaveInfo(null);
@@ -2000,13 +2038,18 @@ function updateStats(lines) {
 function renderIssues(issues) {
   issueCount.textContent = issues.length;
   if (!issues.length) {
+    issueList.removeAttribute('role');
     issueList.innerHTML = '<div class="cb-empty-state"><span class="cb-empty-state__icon">✓</span><span>No issues found — great code!</span></div>';
     return;
   }
   // Text from the AI is escaped before it goes into the page.
   const esc = escOutputHtml;
+  issueList.setAttribute('role', 'list');
+  issueList.setAttribute('aria-label', `${issues.length} detected issue${issues.length === 1 ? '' : 's'}`);
   issueList.innerHTML = issues.map((iss, i) => `
-    <div class="cb-issue cb-issue--${esc(iss.severity)}" data-line="${Number(iss.line) || 0}">
+    <div class="cb-issue cb-issue--${esc(iss.severity)}" data-line="${Number(iss.line) || 0}"
+         role="listitem" tabindex="0"
+         aria-label="${esc(`Line ${Number(iss.line) || 0}, ${iss.severity}: ${iss.message || ''}. Press Enter to go to this line.`)}">
       <span class="cb-issue__line">Line ${Number(iss.line) || 0}</span>
       <span class="cb-issue__severity">${esc(iss.severity)}</span>
       <p class="cb-issue__msg">${esc(iss.message)}</p>
@@ -2018,7 +2061,7 @@ function renderIssues(issues) {
       ${iss.fix ? `
         <div class="cb-issue__fix">
           <pre class="cb-issue__fix-code"><code>${esc(iss.fix)}</code></pre>
-          <button type="button" class="cb-issue__copy" data-fix="${i}" title="Copy the fixed line">Copy</button>
+          <button type="button" class="cb-issue__copy" data-fix="${i}" title="Copy the fixed line" aria-label="Copy the fixed line for line ${Number(iss.line) || 0}">Copy</button>
         </div>` : ''}
     </div>`).join('');
 
@@ -2030,8 +2073,10 @@ function renderIssues(issues) {
       try {
         await navigator.clipboard.writeText(text);
         btn.textContent = 'Copied!';
+        announce('Fixed line copied.');
       } catch {
         btn.textContent = 'Copy failed';
+        announce('Could not copy the fixed line.');
       }
       setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
     });
@@ -2040,6 +2085,11 @@ function renderIssues(issues) {
   animateIn(issueList.querySelectorAll('.cb-issue'));
 
   issueList.querySelectorAll('.cb-issue').forEach(el => {
+    // Keyboard: Enter or Space on the card does the same as clicking it
+    // (but not when the focus is on its Copy button).
+    el.addEventListener('keydown', (e) => {
+      if (e.target === el && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); el.click(); }
+    });
     el.addEventListener('click', () => {
       const line = parseInt(el.dataset.line);
       if (monacoEditor) monacoEditor.revealLineInCenter(line);

@@ -307,6 +307,24 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 }
 .cb-brand__accent { color: var(--accent); }
 
+/* Text that only screen readers read (hidden on screen). */
+.cb-sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Issue cards and History cards can be focused with the keyboard. */
+.cb-issue:focus-visible,
+.cb-history-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .cb-brand__mark, .cb-icon-btn__fill, [data-tip]::after { transition: none; }
   .cb-brand:hover .cb-brand__mark { transform: none; }
