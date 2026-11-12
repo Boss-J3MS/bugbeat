@@ -55,10 +55,12 @@ if (!GOOGLE_CLIENT_ID) {
   console.warn('[auth] GOOGLE_CLIENT_ID is not set — /auth/google will be unavailable.');
 }
 // Locally this is the Python FastAPI service on your machine; once deployed,
-// set ML_SERVICE_URL to wherever it actually lives (e.g. a Hugging Face
-// Space) — otherwise the deployed backend will try to reach its own
-// container on port 5000, where nothing is listening.
+// set ML_SERVICE_URL to wherever it actually lives (the Cloud Run URL) —
+// otherwise the deployed backend will try to reach its own container on
+// port 5000, where nothing is listening. ML_API_KEY must match the key set
+// on the ML service; it is sent with every call.
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:5000';
+const ML_API_KEY     = process.env.ML_API_KEY || '';
 
 // Render (and most hosts) sit their app behind a reverse proxy, which sets
 // X-Forwarded-For to the real client IP. Without telling Express to trust
@@ -168,7 +170,7 @@ app.post('/complexity', async (req, res) => {
   try {
     const mlRes = await fetch(`${ML_SERVICE_URL}/complexity`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(ML_API_KEY && { 'x-api-key': ML_API_KEY }) },
       body: JSON.stringify({ code, lang, use_codebert })
     });
     if (!mlRes.ok) {
