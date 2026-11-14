@@ -156,6 +156,50 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
   return rawText.replace(/```json|```/g, '').trim();
 }
 
+// ── Helper: call Claude (fallback for /analyze) ─
+// Used only when Gemini fails (quota reached, outage, unusable reply), so
+// Analyze keeps working. Needs ANTHROPIC_API_KEY; ANTHROPIC_MODEL picks the
+// model (default: Claude Haiku, the fastest and cheapest). Returns the same
+// kind of JSON text as callGemini().
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
+const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
+if (!ANTHROPIC_API_KEY) {
+  console.warn('[analyze] ANTHROPIC_API_KEY not set — Claude fallback disabled.');
+}
+
+async function callClaude(prompt, temperature = 0.1) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type':      'application/json',
+      'x-api-key':         ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01'
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 8192,
+      temperature,
+      system: 'You are a code analysis engine. Reply with one valid JSON object only: no markdown, no backticks, no extra text.',
+      messages: [{ role: 'user', content: prompt }]
+    })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Claude error (HTTP ${res.status})`);
+  }
+  const data    = await res.json();
+  const rawText = (data?.content || [])
+    .filter(part => part.type === 'text')
+    .map(part => part.text)
+    .join('');
+  if (!rawText) throw new Error('Claude returned an empty response.');
+  if (data.stop_reason === 'max_tokens') throw new Error('Claude response was cut off (code too long).');
+  // Keep just the JSON object, in case anything surrounds it.
+  const text  = rawText.replace(/```json|```/g, '').trim();
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  return start >= 0 && end > start ? text.slice(start, end + 1) : text;
+}
+
 // ── Health check ───────────────────────────────
 app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'BugBeat API' });
@@ -191,7 +235,9 @@ app.post('/analyze', async (req, res) => {
   if (!code?.trim()) return res.status(400).json({ error: 'Missing or empty "code" field.' });
 
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
+  if (!apiKey && !ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
+  }
 
   // The language picked in the app. Anything other than one of these is
   // treated as Auto-detect.
@@ -251,13 +297,37 @@ ${langLabel}Code:
 ${code}
 \`\`\``;
 
-  try {
-    const text   = await callGemini(apiKey, prompt, 0.1);
+  // Gemini first; if it fails or replies with something unusable, the same
+  // prompt goes to Claude. "engine" in the reply says which one answered.
+  const askEngine = async (engine) => {
+    const text   = engine === 'gemini' ? await callGemini(apiKey, prompt, 0.1)
+                                       : await callClaude(prompt, 0.1);
     const parsed = JSON.parse(text);
-    const lines  = parsed?.lines;
-    if (!Array.isArray(lines) || !lines.length) {
-      return res.status(502).json({ error: 'Gemini returned no line data.' });
+    if (!Array.isArray(parsed?.lines) || !parsed.lines.length) {
+      throw new Error(`${engine === 'gemini' ? 'Gemini' : 'Claude'} returned no line data.`);
     }
+    return parsed;
+  };
+
+  try {
+    let parsed, engine;
+    try {
+      if (!apiKey) throw new Error('GEMINI_API_KEY not set');
+      parsed = await askEngine('gemini');
+      engine = 'gemini';
+    } catch (geminiErr) {
+      if (!ANTHROPIC_API_KEY) throw geminiErr;
+      console.warn(`[analyze] Gemini failed: ${geminiErr.message} — trying Claude`);
+      try {
+        parsed = await askEngine('claude');
+        engine = 'claude';
+      } catch (claudeErr) {
+        console.error('[analyze] Claude also failed:', claudeErr.message);
+        throw new Error('Code analysis is unavailable right now. Please try again in a moment.');
+      }
+    }
+    console.log(`[analyze] answered by ${engine}`);
+    const lines = parsed.lines;
     const valid = new Set(['clean','warning','error','critical']);
     const text_ = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
     // A picked language always comes back unchanged; for Auto-detect,
@@ -266,6 +336,7 @@ ${code}
     const language = langName ? lang : (LANG_NAMES[detected] ? detected : 'other');
     res.json({
       language,
+      engine,
       lines: lines.map(l => {
         const severity = valid.has(l.severity) ? l.severity : 'clean';
         const clean    = severity === 'clean';

@@ -470,6 +470,7 @@ const MAX_TRACK_SECONDS = 10 * 60;
 let bassSynth, padSynth, melodySynth, leadSynth;
 let kickSynth, snareSynth, hihatSynth, openHihatSynth;
 let reverb, chorus, distortion, pitchShift, limiter;
+let fxGain;   // turns the distorted synths down so errors aren't louder (applyFx)
 
 // ── Default style ──────────────────────────────
 const DEFAULT_STYLE = {
@@ -519,6 +520,63 @@ const SEVERITY_FX = {
   error:    { distortion: 0.55, pitchShift: -5, rateMult: 0.92, distWet: 0.55, stayMs: 1000 },
   critical: { distortion: 0.9,  pitchShift: -9, rateMult: 0.8,  distWet: 0.9,  stayMs: 1500 }
 };
+
+// ── Error sound level (Settings → Preferences → Sound) ──
+// How strongly flagged lines change the music:
+//   amount  scales the distortion (and, below 1, the pitch drop)
+//   accent  strength (0–1) of the extra chord/drum hits on flagged lines
+// Saved on this browser; read on every beat, so a change applies at once.
+const ERROR_SOUND_LEVELS = {
+  low:    { amount: 0.6,  accent: 0.35 },
+  medium: { amount: 1.0,  accent: 0.55 },
+  high:   { amount: 1.15, accent: 0.8  }
+};
+const ERROR_SOUND_KEY = 'cb-error-sound';
+function errorSoundLevel() {
+  let v = 'medium';
+  try { v = localStorage.getItem(ERROR_SOUND_KEY) || 'medium'; } catch (e) {}
+  return ERROR_SOUND_LEVELS[v] || ERROR_SOUND_LEVELS.medium;
+}
+
+// Distortion makes the sound louder (it squares the wave off). To keep
+// errors sounding broken but not louder, the synths are turned down by
+// this much while a flagged line plays.
+// (Values measured in the browser with the built-in music styles.)
+const FX_LEVEL = { clean: 1, warning: 0.85, error: 0.5, critical: 0.45 };
+
+// For an uploaded track the boost depends on how loud the song itself is
+// (quiet passages get boosted far more), so it is measured instead: the
+// track's level is read just before and just after the distortion, and
+// the volume is turned down by the difference (see startAudioLeveler).
+const AUDIO_BASE_GAIN = 0.75;
+let audioPreMeter = null, audioPostMeter = null, audioLevelTimer = null;
+
+function rmsOf(analyser, buf) {
+  analyser.getFloatTimeDomainData(buf);
+  let sum = 0;
+  for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+  return Math.sqrt(sum / buf.length);
+}
+
+// Every 40 ms while an uploaded track plays: volume = base level × (level
+// before distortion ÷ level after it), so a distorted line is about as
+// loud as the clean song. Smoothed so it never jumps.
+function startAudioLeveler() {
+  stopAudioLeveler();
+  const pre = new Float32Array(1024), post = new Float32Array(1024);
+  audioLevelTimer = setInterval(() => {
+    if (!audioGain || !audioPreMeter || !audioPostMeter) return;
+    const inRms  = rmsOf(audioPreMeter, pre);
+    const outRms = rmsOf(audioPostMeter, post);
+    if (inRms < 0.003 || outRms < 0.003) return;          // silence: leave as is
+    const ratio  = Math.min(1, Math.max(0.08, inRms / outRms));
+    audioGain.gain.setTargetAtTime(AUDIO_BASE_GAIN * ratio, audioContext.currentTime, 0.03);
+  }, 40);
+}
+function stopAudioLeveler() {
+  clearInterval(audioLevelTimer);
+  audioLevelTimer = null;
+}
 
 // ═══════════════════════════════════════════════
 // AUDIO FILE UPLOAD
@@ -622,7 +680,7 @@ function playAudioFile() {
   stopAudioFile();
   audioContext.resume();
   audioGain     = audioContext.createGain();
-  audioGain.gain.value = 0.75;
+  audioGain.gain.value = AUDIO_BASE_GAIN;
   audioDistNode = audioContext.createWaveShaper();
   audioDistNode.curve      = makeDistortionCurve(0);
   audioDistNode.oversample = '4x';
@@ -632,24 +690,34 @@ function playAudioFile() {
   audioSource.playbackRate.value = 1.0;
   audioSource.connect(audioDistNode);
   audioDistNode.connect(audioGain);
+  // Level meters before and after the distortion (startAudioLeveler).
+  audioPreMeter  = audioContext.createAnalyser();  audioPreMeter.fftSize  = 1024;
+  audioPostMeter = audioContext.createAnalyser();  audioPostMeter.fftSize = 1024;
+  audioSource.connect(audioPreMeter);
+  audioDistNode.connect(audioPostMeter);
   audioGain.connect(audioContext.destination);
   // Level meter for the waveform pulse (see startWavePulse).
   audioAnalyser = audioContext.createAnalyser();
   audioAnalyser.fftSize = 1024;
   audioGain.connect(audioAnalyser);
   audioSource.start(0);
+  startAudioLeveler();
 }
 
 function stopAudioFile() {
   try { audioSource?.stop(); audioSource?.disconnect(); } catch(e) {}
   audioSource = null;
+  stopAudioLeveler();
 }
 
 function applyAudioFx(severity) {
   if (!audioSource || !audioDistNode) return;
-  const fx = SEVERITY_FX[severity];
-  audioDistNode.curve = makeDistortionCurve(fx.distortion * 400);
+  const fx    = SEVERITY_FX[severity];
+  const level = errorSoundLevel();
+  const curve = makeDistortionCurve(fx.distortion * level.amount * 400);
+  audioDistNode.curve = curve;
   audioSource.playbackRate.value = fx.rateMult;
+  // The volume is evened out by startAudioLeveler.
 }
 
 function resetAudioFx() {
@@ -937,7 +1005,8 @@ function initSynths() {
   limiter    = new Tone.Limiter(-2).toDestination();
   reverb     = new Tone.Reverb({ decay: 2.0, wet: style.reverbWet }).connect(limiter);
   chorus     = new Tone.Chorus({ frequency: 1.5, delayTime: 3.5, depth: 0.7, wet: style.chorusWet }).connect(reverb);
-  distortion = new Tone.Distortion({ distortion: 0, wet: 0 }).connect(chorus);
+  fxGain     = new Tone.Gain(1).connect(chorus);
+  distortion = new Tone.Distortion({ distortion: 0, wet: 0 }).connect(fxGain);
   pitchShift = new Tone.PitchShift({ pitch: 0, windowSize: 0.1 }).connect(distortion);
 
   bassSynth = new Tone.Synth({
@@ -997,7 +1066,7 @@ function teardownSynths() {
   stopLoop();
   [bassSynth, padSynth, melodySynth, leadSynth,
    kickSynth, snareSynth, hihatSynth, openHihatSynth,
-   reverb, chorus, distortion, pitchShift, limiter
+   reverb, chorus, distortion, pitchShift, fxGain, limiter
   ].forEach(n => { try { n?.dispose(); } catch(e) {} });
   synthsReady = false;
 }
@@ -1061,11 +1130,14 @@ function stopLoop() {
 }
 
 function applyFx(severity) {
-  const fx = SEVERITY_FX[severity] || SEVERITY_FX.clean;
+  const fx    = SEVERITY_FX[severity] || SEVERITY_FX.clean;
+  const level = errorSoundLevel();
   try {
-    distortion.distortion = fx.distortion;
-    distortion.wet.value  = fx.distWet;
-    pitchShift.pitch      = fx.pitchShift;
+    distortion.distortion = Math.min(1, fx.distortion * level.amount);
+    distortion.wet.value  = Math.min(1, fx.distWet * level.amount);
+    pitchShift.pitch      = fx.pitchShift * Math.min(1, level.amount);
+    // Keep the distorted line about as loud as a clean one.
+    fxGain.gain.rampTo(FX_LEVEL[severity] ?? 1, 0.04);
   } catch(e) {}
   applyAudioFx(severity);
 }
@@ -1075,6 +1147,7 @@ function resetFx() {
     distortion.distortion = 0;
     distortion.wet.value  = 0;
     pitchShift.pitch      = 0;
+    fxGain.gain.rampTo(1, 0.04);
   } catch(e) {}
   resetAudioFx();
 }
@@ -1084,20 +1157,22 @@ function accentBeat(severity) {
   const style = getStyle();
   const notes = style.chordMap?.[severity] || ['C4'];
   const now   = Tone.now() + 0.01;
+  // Strength of the extra hits, from the Error sound setting.
+  const v     = errorSoundLevel().accent;
   try {
     if (severity === 'warning') {
-      leadSynth.triggerAttackRelease(notes[0], '8n', now);
-      snareSynth.triggerAttackRelease('16n', now + 0.05);
+      leadSynth.triggerAttackRelease(notes[0], '8n', now, v);
+      snareSynth.triggerAttackRelease('16n', now + 0.05, v * 0.8);
     } else if (severity === 'error') {
-      melodySynth.triggerAttackRelease(notes, '8n', now);
-      kickSynth.triggerAttackRelease('C1', '8n', now);
-      snareSynth.triggerAttackRelease('8n', now + 0.03);
+      melodySynth.triggerAttackRelease(notes, '8n', now, v);
+      kickSynth.triggerAttackRelease('C1', '8n', now, v);
+      snareSynth.triggerAttackRelease('8n', now + 0.03, v * 0.8);
     } else if (severity === 'critical') {
-      melodySynth.triggerAttackRelease(notes, '4n', now);
-      leadSynth.triggerAttackRelease(notes[0], '4n', now + 0.02);
-      kickSynth.triggerAttackRelease('C1', '4n', now);
-      snareSynth.triggerAttackRelease('4n', now + 0.02);
-      kickSynth.triggerAttackRelease('C1', '8n', now + 0.2);
+      melodySynth.triggerAttackRelease(notes, '4n', now, v);
+      leadSynth.triggerAttackRelease(notes[0], '4n', now + 0.02, v);
+      kickSynth.triggerAttackRelease('C1', '4n', now, v);
+      snareSynth.triggerAttackRelease('4n', now + 0.02, v * 0.8);
+      kickSynth.triggerAttackRelease('C1', '8n', now + 0.2, v * 0.7);
     }
   } catch(e) {}
 }
