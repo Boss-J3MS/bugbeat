@@ -160,14 +160,15 @@ async function callGemini(apiKey, prompt, temperature = 0.1) {
 // Used only when Gemini fails (quota reached, outage, unusable reply), so
 // Analyze keeps working. Needs ANTHROPIC_API_KEY; ANTHROPIC_MODEL picks the
 // model (default: Claude Haiku, the fastest and cheapest). Returns the same
-// kind of JSON text as callGemini().
+// kind of JSON text as callGemini(). No temperature is sent: newer Claude
+// models reject that setting.
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL   = process.env.ANTHROPIC_MODEL || 'claude-haiku-5-5';
 if (!ANTHROPIC_API_KEY) {
   console.warn('[analyze] ANTHROPIC_API_KEY not set — Claude fallback disabled.');
 }
 
-async function callClaude(prompt, temperature = 0.1) {
+async function callClaude(prompt) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -178,7 +179,6 @@ async function callClaude(prompt, temperature = 0.1) {
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
       max_tokens: 8192,
-      temperature,
       system: 'You are a code analysis engine. Reply with one valid JSON object only: no markdown, no backticks, no extra text.',
       messages: [{ role: 'user', content: prompt }]
     })
@@ -301,7 +301,7 @@ ${code}
   // prompt goes to Claude. "engine" in the reply says which one answered.
   const askEngine = async (engine) => {
     const text   = engine === 'gemini' ? await callGemini(apiKey, prompt, 0.1)
-                                       : await callClaude(prompt, 0.1);
+                                       : await callClaude(prompt);
     const parsed = JSON.parse(text);
     if (!Array.isArray(parsed?.lines) || !parsed.lines.length) {
       throw new Error(`${engine === 'gemini' ? 'Gemini' : 'Claude'} returned no line data.`);
