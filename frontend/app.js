@@ -523,43 +523,51 @@ const SEVERITY_FX = {
 };
 
 // ── Error sound level (slider in the Playback panel) ──
-// How strongly flagged lines change the music:
+// How strongly flagged lines change the music, as a percentage:
 //   amount  scales the distortion (and, below 1, the pitch drop)
 //   accent  strength (0–1) of the extra chord/drum hits on flagged lines
-// Saved on this browser; read on every beat, so a change applies at once.
-const ERROR_SOUND_LEVELS = {
-  low:    { amount: 0.6,  accent: 0.35 },
-  medium: { amount: 1.0,  accent: 0.55 },
-  high:   { amount: 1.15, accent: 0.8  }
-};
-const ERROR_SOUND_KEY = 'cb-error-sound';
-function errorSoundLevel() {
-  let v = 'medium';
-  try { v = localStorage.getItem(ERROR_SOUND_KEY) || 'medium'; } catch (e) {}
-  return ERROR_SOUND_LEVELS[v] || ERROR_SOUND_LEVELS.medium;
+// 50% is the standard effect. 0% is the gentlest setting, not silence, so
+// a flagged line can always be heard. Saved on this browser; read on every
+// beat, so a change applies at once.
+const ERROR_SOUND_KEY     = 'cb-error-sound';
+const ERROR_SOUND_DEFAULT = 50;
+// Choices saved by the earlier Low / Medium / High control.
+const ERROR_SOUND_OLD = { low: 25, medium: 50, high: 100 };
+
+function errorSoundPercent() {
+  let saved = null;
+  try { saved = localStorage.getItem(ERROR_SOUND_KEY); } catch (e) {}
+  if (saved !== null && Object.hasOwn(ERROR_SOUND_OLD, saved)) return ERROR_SOUND_OLD[saved];
+  const n = parseFloat(saved);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : ERROR_SOUND_DEFAULT;
 }
 
-// The slider under BPM picks the level: 0 = Low, 1 = Medium, 2 = High.
-const ERROR_SOUND_ORDER  = ['low', 'medium', 'high'];
-const ERROR_SOUND_LABELS = { low: 'Low', medium: 'Medium', high: 'High' };
+function errorSoundLevel() {
+  const p = errorSoundPercent();
+  // Straight lines between 0% (0.2, 0.15), 50% (1.0, 0.55) and 100% (1.15, 0.8).
+  if (p <= 50) {
+    const t = p / 50;
+    return { amount: 0.2 + 0.8 * t, accent: 0.15 + 0.4 * t };
+  }
+  const t = (p - 50) / 50;
+  return { amount: 1 + 0.15 * t, accent: 0.55 + 0.25 * t };
+}
+
+// The slider under BPM sets the percentage.
 const errorSoundRange = document.getElementById('error-sound-range');
 const errorSoundVal   = document.getElementById('error-sound-val');
 if (errorSoundRange) {
   const showErrorSound = () => {
-    const key = ERROR_SOUND_ORDER[errorSoundRange.value] || 'medium';
-    if (errorSoundVal) errorSoundVal.textContent = ERROR_SOUND_LABELS[key];
-    errorSoundRange.setAttribute('aria-valuetext', ERROR_SOUND_LABELS[key]);
+    const label = `${errorSoundRange.value}%`;
+    if (errorSoundVal) errorSoundVal.textContent = label;
+    errorSoundRange.setAttribute('aria-valuetext', label);
     updateRangeFill(errorSoundRange);
-    return key;
   };
-  let saved = 'medium';
-  try { saved = localStorage.getItem(ERROR_SOUND_KEY) || 'medium'; } catch (e) {}
-  const index = ERROR_SOUND_ORDER.indexOf(saved);
-  errorSoundRange.value = index < 0 ? 1 : index;
+  errorSoundRange.value = Math.round(errorSoundPercent());
   showErrorSound();
   errorSoundRange.addEventListener('input', () => {
-    const key = showErrorSound();
-    try { localStorage.setItem(ERROR_SOUND_KEY, key); } catch (e) {}
+    showErrorSound();
+    try { localStorage.setItem(ERROR_SOUND_KEY, errorSoundRange.value); } catch (e) {}
   });
 }
 
