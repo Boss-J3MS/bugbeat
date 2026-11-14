@@ -773,7 +773,8 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   padding: 0.75rem;
   border-bottom: 1px solid var(--border);
 }
-.cb-bpm-label { font-size: 0.72rem; color: var(--text-muted); }
+/* Same label and value widths on every slider row, so the sliders line up. */
+.cb-bpm-label { font-size: 0.72rem; color: var(--text-muted); min-width: 4.6rem; }
 
 /* Custom range slider track/thumb — some browsers don't fully theme a
    native <input type="range"> track via color-scheme/accent-color alone,
@@ -831,7 +832,7 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
   background: var(--accent);
   cursor: pointer;
 }
-.cb-bpm-val { font-size: 0.72rem; font-family: var(--font-code); color: var(--text); min-width: 28px; }
+.cb-bpm-val { font-size: 0.72rem; font-family: var(--font-code); color: var(--text); min-width: 3.2rem; }
 
 /* ── Stats ───────────────────────────────────── */
 /* One compact row of four, so the Playback panel stays a fixed,

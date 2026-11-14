@@ -4,8 +4,7 @@
 //    • Profile:     nickname (saved to the account, once a week), username, email,
 //                   sign-in method, member since.
 //    • Preferences: Appearance (theme / text size / code size — wired up
-//                   by appearance.js), error sound level and the default
-//                   code language.
+//                   by appearance.js) and the default code language.
 //    • Security:    Change password (opens account.js's window on top),
 //                   signed-in devices (log out one, or all others), delete account.
 //  Also shows the nickname (or the username) in the sidebar greeting.
@@ -227,18 +226,6 @@
         clearInterval(wait);
       }
     }, 250);
-  }
-
-  // ── Preferences: error sound level ────────────
-  // app.js (errorSoundLevel) reads this on every beat.
-  const errorSound = $('set-error-sound');
-  if (errorSound) {
-    let saved = 'medium';
-    try { saved = localStorage.getItem('cb-error-sound') || 'medium'; } catch (e) {}
-    errorSound.value = ['low', 'medium', 'high'].includes(saved) ? saved : 'medium';
-    errorSound.addEventListener('change', () => {
-      try { localStorage.setItem('cb-error-sound', errorSound.value); } catch (e) {}
-    });
   }
 
   // ── Security: signed-in devices ────────────────

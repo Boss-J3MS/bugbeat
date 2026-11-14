@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=34" />
+  <link rel="stylesheet" href="style.css?v=35" />
   <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
@@ -255,6 +255,13 @@
         <label class="cb-bpm-label" for="bpm-range">BPM</label>
         <input type="range" id="bpm-range" class="cb-bpm-range" min="60" max="200" value="120" step="1" />
         <span id="bpm-val" class="cb-bpm-val">120</span>
+      </div>
+      <!-- How strongly lines with problems bend the music (app.js errorSoundLevel). -->
+      <div class="cb-bpm-row">
+        <label class="cb-bpm-label" for="error-sound-range">Error sound</label>
+        <input type="range" id="error-sound-range" class="cb-bpm-range" min="0" max="2" value="1" step="1"
+               aria-valuetext="Medium" title="How strongly lines with problems bend the music" />
+        <span id="error-sound-val" class="cb-bpm-val">Medium</span>
       </div>
       <div class="cb-stats" id="cb-stats">
         <div class="cb-stat cb-stat--clean">
@@ -515,20 +522,6 @@
           </div>
 
           <div class="cb-set__group">
-            <h3 class="cb-set__title">Sound</h3>
-            <label class="cb-menu__field">
-              <span>Error sound</span>
-              <select id="set-error-sound" class="cb-select" aria-label="Error sound level"
-                      aria-describedby="set-error-sound-hint">
-                <option value="low">Low</option>
-                <option value="medium">Medium (default)</option>
-                <option value="high">High</option>
-              </select>
-            </label>
-            <div class="cb-set__hint" id="set-error-sound-hint">How strongly lines with problems bend the music. Changes apply right away, even during playback. Saved on this browser.</div>
-          </div>
-
-          <div class="cb-set__group">
             <h3 class="cb-set__title">Editor</h3>
             <label class="cb-menu__field">
               <span>Default language</span>
@@ -704,7 +697,7 @@
 
   <script src="popover.js?v=2"></script>
   <script src="magenta.js?v=1"></script>
-  <script src="app.js?v=23"></script>
+  <script src="app.js?v=24"></script>
   <script src="history.js?v=7"></script>
   <script src="notif-view.js?v=5"></script>
   <script src="banner.js"></script>
@@ -713,7 +706,7 @@
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
   <script src="account.js?v=2"></script>
-  <script src="settings.js?v=5"></script>
+  <script src="settings.js?v=6"></script>
   <script src="logout.js?v=2"></script>
   <script src="tour.js?v=9"></script>
   <script src="resize.js?v=4"></script>

@@ -341,13 +341,14 @@ const bpmVal         = document.getElementById('bpm-val');
 // The BPM slider is fully custom-styled (see style.css), so the
 // "filled" green portion up to the thumb isn't drawn by the browser
 // automatically anymore — recompute it as a gradient on every change.
-function updateBpmFill() {
-  const min = parseFloat(bpmRange.min) || 0;
-  const max = parseFloat(bpmRange.max) || 100;
-  const val = parseFloat(bpmRange.value) || min;
+function updateRangeFill(range) {
+  const min = parseFloat(range.min) || 0;
+  const max = parseFloat(range.max) || 100;
+  const val = parseFloat(range.value) || min;
   const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
-  bpmRange.style.setProperty('--bpm-fill', `${pct}%`);
+  range.style.setProperty('--bpm-fill', `${pct}%`);
 }
+function updateBpmFill() { updateRangeFill(bpmRange); }
 updateBpmFill();
 const progressFill   = document.getElementById('progress-fill');
 const currentLine    = document.getElementById('current-line');
@@ -521,7 +522,7 @@ const SEVERITY_FX = {
   critical: { distortion: 0.9,  pitchShift: -9, rateMult: 0.8,  distWet: 0.9,  stayMs: 1500 }
 };
 
-// ── Error sound level (Settings → Preferences → Sound) ──
+// ── Error sound level (slider in the Playback panel) ──
 // How strongly flagged lines change the music:
 //   amount  scales the distortion (and, below 1, the pitch drop)
 //   accent  strength (0–1) of the extra chord/drum hits on flagged lines
@@ -536,6 +537,30 @@ function errorSoundLevel() {
   let v = 'medium';
   try { v = localStorage.getItem(ERROR_SOUND_KEY) || 'medium'; } catch (e) {}
   return ERROR_SOUND_LEVELS[v] || ERROR_SOUND_LEVELS.medium;
+}
+
+// The slider under BPM picks the level: 0 = Low, 1 = Medium, 2 = High.
+const ERROR_SOUND_ORDER  = ['low', 'medium', 'high'];
+const ERROR_SOUND_LABELS = { low: 'Low', medium: 'Medium', high: 'High' };
+const errorSoundRange = document.getElementById('error-sound-range');
+const errorSoundVal   = document.getElementById('error-sound-val');
+if (errorSoundRange) {
+  const showErrorSound = () => {
+    const key = ERROR_SOUND_ORDER[errorSoundRange.value] || 'medium';
+    if (errorSoundVal) errorSoundVal.textContent = ERROR_SOUND_LABELS[key];
+    errorSoundRange.setAttribute('aria-valuetext', ERROR_SOUND_LABELS[key]);
+    updateRangeFill(errorSoundRange);
+    return key;
+  };
+  let saved = 'medium';
+  try { saved = localStorage.getItem(ERROR_SOUND_KEY) || 'medium'; } catch (e) {}
+  const index = ERROR_SOUND_ORDER.indexOf(saved);
+  errorSoundRange.value = index < 0 ? 1 : index;
+  showErrorSound();
+  errorSoundRange.addEventListener('input', () => {
+    const key = showErrorSound();
+    try { localStorage.setItem(ERROR_SOUND_KEY, key); } catch (e) {}
+  });
 }
 
 // Distortion makes the sound louder (it squares the wave off). To keep
