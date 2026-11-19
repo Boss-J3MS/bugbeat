@@ -264,12 +264,17 @@ Set "language" to one of: "javascript", "python", "typescript", "java", "c", "cp
 
 ${languageRule}
 
-For EACH line, identify:
-- Syntax errors
-- Logic bugs (wrong operators, off-by-one, incorrect conditions)
-- Runtime risks (null/undefined access, index out of bounds)
-- Bad practices or code smells (unused variables, missing semicolons, etc.)
-- Missing error handling or security issues
+Give EACH line one severity, using these definitions:
+- "critical": the code will not compile or parse, or it will crash when it runs (syntax error, division by zero, null/undefined access, index out of bounds, buffer overflow).
+- "error": the code runs but gives a wrong result (wrong operator, off-by-one, wrong condition, wrong variable, wrong formula), or it has a security hole such as SQL built from user input.
+- "warning": a concrete problem that does not break this program yet but is clearly wrong, such as an unused variable or a value that is assigned and never read.
+- "clean": everything else.
+
+Rules:
+1. Report each problem ONCE, on the line that has to be changed to fix it. Do NOT also flag the lines that call that code, the data that triggers it, or the line that prints the wrong result. Those lines stay "clean".
+2. Only report problems the code itself shows. Do not flag missing input validation, a parameter that "might" be null, or missing error handling, unless the code shows the problem can happen (for example, the result of find() is used without checking for undefined, or a 0 is passed to a division).
+3. Do not flag style choices that are valid in this language: naming, formatting, brace style, optional semicolons, or a different but correct way of writing something.
+4. If you are not sure that a line has a problem, mark it "clean".
 
 For every line that is NOT clean, also give:
 - "suggestion": one or two short, beginner-friendly sentences explaining how to fix it and why
@@ -283,9 +288,9 @@ Format:
   "language": "python",
   "lines": [
     { "line": 1, "severity": "clean", "message": "", "suggestion": "", "fix": "" },
-    { "line": 2, "severity": "warning", "message": "Missing semicolon", "suggestion": "End the statement with a semicolon so it isn't joined with the next line by mistake.", "fix": "let total = 0;" },
+    { "line": 2, "severity": "warning", "message": "Unused variable: total is never read", "suggestion": "total is set but never used. Remove it, or use it where the sum is needed.", "fix": "" },
     { "line": 3, "severity": "error", "message": "Off-by-one: loop reads past the end of the array", "suggestion": "Arrays start at index 0, so the last index is length - 1. Use < instead of <=.", "fix": "for (let i = 0; i < items.length; i++) {" },
-    { "line": 4, "severity": "critical", "message": "Null dereference risk", "suggestion": "user can be null here. Check it before reading its properties.", "fix": "if (user) console.log(user.name);" }
+    { "line": 4, "severity": "critical", "message": "find() can return undefined, so user.name can crash", "suggestion": "find() returns undefined when nothing matches. Check user before reading its properties.", "fix": "if (user) console.log(user.name);" }
   ]
 }
 
