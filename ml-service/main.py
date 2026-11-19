@@ -100,6 +100,11 @@ async def analyze_complexity(req: ComplexityRequest):
         raise HTTPException(status_code=400, detail='Code is empty.')
 
     code = req.code
+    # Blank lines are not code, so they are left out of the scoring: adding
+    # or removing empty lines does not change the size features, the
+    # CodeBERT score or the final risk. Line-level results below still use
+    # the original line numbers.
+    scored_code = '\n'.join(line for line in code.split('\n') if line.strip())
 
     # 1. Extract static features
     # radon (extractor.py) parses a real Python AST, so it stays the
@@ -108,13 +113,13 @@ async def analyze_complexity(req: ComplexityRequest):
     # multi-language path instead (plus a javalang AST for Java).
     lang = (req.lang or 'auto').lower()
     if lang == 'auto':
-        lang = detect_language(code)
+        lang = detect_language(scored_code)
 
     if lang == 'python':
-        features     = extract_features(code)
+        features     = extract_features(scored_code)
         per_function = extract_per_function(code)
     else:
-        features     = extract_features_generic(code, lang)
+        features     = extract_features_generic(scored_code, lang)
         per_function = extract_per_function_generic(code, lang)
 
     line_risk = get_line_risk_map(code, per_function)
@@ -130,7 +135,7 @@ async def analyze_complexity(req: ComplexityRequest):
     if req.use_codebert:
         analyzer = get_analyzer()
         if analyzer.loaded:
-            cb_result       = analyzer.predict(code)
+            cb_result       = analyzer.predict(scored_code)
             codebert_score  = cb_result['codebert_score']
             codebert_chunks = analyzer.predict_per_chunk(code)
         else:

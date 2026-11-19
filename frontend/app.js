@@ -442,6 +442,10 @@ function clearDecorations() {
 // ── State ──────────────────────────────────────
 let beatData     = [];
 let isPlaying    = false;
+// Paused (not stopped): the next Play continues from the same code line,
+// and from the same point in the music when the music source is unchanged.
+let isPaused     = false;
+let playMode     = null;   // 'track' (uploaded song) or 'synth' (generated music)
 let playIndex    = 0;
 let playTimer    = null;
 let currentStyle = null;
@@ -627,6 +631,7 @@ async function useAudioTrack(arrayBuffer, name) {
       return false;
     }
     audioBuffer = decoded;
+    if (!isPlaying) trackPos = 0;
     currentTrackName = name;
     audioLabel.textContent = `🎵 ${name}`;
     audioRemoveBtn.hidden  = false;
@@ -708,7 +713,7 @@ if (audioRemoveBtn) {
   });
 }
 
-function playAudioFile() {
+function playAudioFile(offset = 0) {
   if (!audioBuffer || !audioContext) return;
   stopAudioFile();
   audioContext.resume();
@@ -733,7 +738,8 @@ function playAudioFile() {
   audioAnalyser = audioContext.createAnalyser();
   audioAnalyser.fftSize = 1024;
   audioGain.connect(audioAnalyser);
-  audioSource.start(0);
+  const dur = audioBuffer.duration || 0;
+  audioSource.start(0, dur > 0 ? offset % dur : 0);
   startAudioLeveler();
 }
 
@@ -887,6 +893,7 @@ function applyMusicStyle(key, { announce = true, remember = false } = {}) {
 
   const wasPlaying = isPlaying;
   if (wasPlaying) stopPlayback();
+  else if (isPaused) stopLoop();
   if (synthsReady) teardownSynths();
   if (wasPlaying) startPlayback();
 
@@ -932,7 +939,7 @@ function updateNowPlaying() {
     kindEl.textContent = magentaGroove ? 'Generated · Magenta groove' : 'Generated';
   }
   // The stopped position depends on the source (song time or bars).
-  if (!isPlaying && currentLine) currentLine.textContent = idlePositionLabel();
+  if (!isPlaying && !isPaused && currentLine) currentLine.textContent = idlePositionLabel();
 }
 
 // ── Notice pop-up ──────────────────────────────
@@ -1213,23 +1220,41 @@ function accentBeat(severity) {
 // ═══════════════════════════════════════════════
 // SEQUENCER PLAYBACK
 // ═══════════════════════════════════════════════
-function startPlayback() {
+// Play button: ⏸ while playing, ▶ when paused or stopped.
+function setPlayButton(playing) {
+  playBtn.textContent = playing ? '⏸' : '▶';
+  playBtn.setAttribute('aria-label', playing ? 'Pause' : (isPaused ? 'Resume' : 'Play'));
+}
+
+// resume = true continues after a pause instead of starting over.
+function startPlayback({ resume = false } = {}) {
   if (!beatData.length) return;
-  isPlaying = true; playIndex = 0; chordIndex = 0;
-  playBtn.textContent = '⏸';
+  const resuming = resume && isPaused;
+  if (!resuming) { playIndex = 0; chordIndex = 0; }
 
   // An uploaded track replaces the synthesized instruments entirely —
   // it plays on its own, with the same severity-based distortion/pitch
   // effects applied directly to the real audio, instead of layering the
   // AI-generated bass/pad/lead/drums on top of it.
   const usingUploadedTrack = !!audioBuffer;
+  const mode = usingUploadedTrack ? 'track' : 'synth';
+  // The music picks up where it stopped only if its source is the same
+  // as before the pause (no track added or removed in between).
+  const sameMusic = resuming && playMode === mode;
+
+  isPlaying = true; isPaused = false; playMode = mode;
+  setPlayButton(true);
+
   if (usingUploadedTrack) {
-    playAudioFile();
+    playAudioFile(sameMusic ? trackPos : 0);
+  } else if (sameMusic && toneLoop) {
+    Tone.getTransport().bpm.value = parseInt(bpmRange.value);
+    Tone.getTransport().start();
   } else {
     initSynths();
     startLoop();
   }
-  startPositionDisplay();
+  startPositionDisplay(sameMusic);
   startWavePulse();
 
   function tick() {
@@ -1261,11 +1286,26 @@ function startPlayback() {
   tick();
 }
 
+// Pause: everything holds still (music, highlighted line, position) until
+// Play is pressed again.
+function pausePlayback() {
+  if (!isPlaying) return;
+  updatePositionDisplay();            // bring the song position up to date
+  isPlaying = false; isPaused = true;
+  clearTimeout(playTimer);
+  if (playMode === 'track') stopAudioFile();
+  else { try { Tone.getTransport().pause(); } catch(e) {} }
+  resetFx();
+  setPlayButton(false);
+  stopPositionDisplay(false);         // keep showing where it paused
+  stopWavePulse();
+}
+
 function stopPlayback() {
-  isPlaying = false;
+  isPlaying = false; isPaused = false; playMode = null;
   clearTimeout(playTimer);
   stopLoop(); stopAudioFile(); resetFx();
-  playBtn.textContent = '▶';
+  setPlayButton(false);
   document.querySelectorAll('.cb-beat').forEach(el => el.classList.remove('cb-beat--active'));
   stopPositionDisplay();
   stopWavePulse();
@@ -1324,9 +1364,9 @@ function updatePositionDisplay() {
   }
 }
 
-function startPositionDisplay() {
+function startPositionDisplay(resume = false) {
   stopPositionDisplay(false);
-  trackPos   = 0;
+  if (!resume) trackPos = 0;
   trackLastT = audioContext ? audioContext.currentTime : 0;
   updatePositionDisplay();
   positionTimer = setInterval(updatePositionDisplay, 100);
@@ -1351,7 +1391,7 @@ function idlePositionLabel() {
 playBtn.addEventListener('click', async () => {
   await Tone.start();
   if (audioContext) await audioContext.resume();
-  if (isPlaying) stopPlayback(); else startPlayback();
+  if (isPlaying) pausePlayback(); else startPlayback({ resume: isPaused });
 });
 
 stopBtn.addEventListener('click', () => { stopPlayback(); playIndex = 0; });
@@ -1385,7 +1425,10 @@ analyzeBtn.addEventListener('click', async () => {
   const mlPromise = fetchComplexity(code, lang);
 
   try {
-    const { lines, language } = await analyzeWithBackend(code, lang);
+    const result   = await analyzeWithBackend(code, lang);
+    const language = result.language;
+    const lines    = dropBlankLines(result.lines, code);
+    if (!lines.length) throw new Error('There is no code to analyze, only blank lines.');
     // A picked language stays as it is. With Auto-detect, show what was
     // detected, switch the editor's highlighting to it, and save it to
     // History (instead of always saving "javascript").
@@ -1693,6 +1736,15 @@ if (cbToken) recallMusicPreference();
 // ═══════════════════════════════════════════════
 // SAVE ANALYSIS TO HISTORY
 // ═══════════════════════════════════════════════
+// Blank lines (empty or only spaces) are not code: they get no beat, are
+// not counted as clean lines and do not lower the risk score. A blank line
+// is kept only when the analysis reports a problem on it (for example a
+// missing closing brace after the last line).
+function dropBlankLines(lines, code) {
+  const src = code.split('\n');
+  return lines.filter(l => l.severity !== 'clean' || (src[l.line - 1] ?? '').trim() !== '');
+}
+
 async function saveAnalysisToHistory(code, lang, lines) {
   try {
     // ── Compute counts ──────────────────────────
@@ -1701,7 +1753,9 @@ async function saveAnalysisToHistory(code, lang, lines) {
     const errorCount    = lines.filter(l => l.severity === 'error').length;
     const criticalCount = lines.filter(l => l.severity === 'critical').length;
     const issuesFound   = warningCount + errorCount + criticalCount;
-    const totalLines    = lines.length;
+    // All lines of the submitted code, blank ones included (the counts
+    // above cover only the code lines).
+    const totalLines    = code.split('\n').length;
 
     const { fusionScore, riskLevel } = scoreLines(lines);
 
@@ -1963,7 +2017,7 @@ let waveHoverLine = null;   // line under the mouse/keyboard focus, if any
 
 function waveSummary() {
   const issues = beatData.filter(b => b.severity !== 'clean').length;
-  return `${beatData.length} line${beatData.length === 1 ? '' : 's'} · ` +
+  return `${beatData.length} code line${beatData.length === 1 ? '' : 's'} · ` +
          `${issues} issue${issues === 1 ? '' : 's'} — hover a bar to see its line`;
 }
 
