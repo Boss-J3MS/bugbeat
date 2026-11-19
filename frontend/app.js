@@ -1429,10 +1429,11 @@ analyzeBtn.addEventListener('click', async () => {
     const language = result.language;
     const lines    = dropBlankLines(result.lines, code);
     if (!lines.length) throw new Error('There is no code to analyze, only blank lines.');
-    // A picked language stays as it is. With Auto-detect, show what was
-    // detected, switch the editor's highlighting to it, and save it to
-    // History (instead of always saving "javascript").
-    let savedLang = lang;
+    // A picked language stays as it is. With Auto-detect, the language
+    // list switches to the detected language (so Run and the next Analyze
+    // use it), the editor's highlighting follows, and History saves it
+    // (instead of always saving "javascript").
+    let savedLang = lang, detectedNote = '';
     if (lang !== 'auto' && LANG_LABELS[lang]) {
       setMusicStatus(`✓ Checked as ${LANG_LABELS[lang]}`, '');
     }
@@ -1440,8 +1441,10 @@ analyzeBtn.addEventListener('click', async () => {
       const name = LANG_LABELS[language];
       if (name) {
         savedLang = language;
+        langSelect.value = language;
         if (monacoEditor) monaco.editor.setModelLanguage(monacoEditor.getModel(), getMonacoLang(language));
-        setMusicStatus(`🔍 Detected language: ${name}`, 'ok');
+        setMusicStatus(`🔍 Detected language: ${name} — switched to ${name}`, 'ok');
+        detectedNote = `Detected language: ${name}. The language list is now set to ${name}. `;
       } else {
         savedLang = 'javascript';   // same fallback History always used
         setMusicStatus('🔍 Could not tell which language this is — pick it from the list for a stricter check', '');
@@ -1453,7 +1456,7 @@ analyzeBtn.addEventListener('click', async () => {
     updateStats(lines);
     highlightEditorLines(lines);
     lastRisk = scoreLines(lines).riskLevel;
-    announce(analysisSummary(lines, lastRisk));
+    announce(detectedNote + analysisSummary(lines, lastRisk));
     refreshGroove();
     // ✅ Save analysis session to history
     await saveAnalysisToHistory(code, savedLang, lines);
