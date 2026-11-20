@@ -19,13 +19,22 @@
      back to a row here, since the split layout needs the two panels
      side by side, not stacked. */
   flex-direction: row;
+  /* style.css fixes body at the window height (html, body { height: 100% }).
+     Here the page has to be able to grow taller than the window, or a card
+     taller than a short laptop screen is cut off at the top with no way to
+     scroll to it. */
+  height: auto;
   min-height: 100vh;
   background: var(--bg);
   overflow: auto;
 }
 
 .auth-visual {
-  position: relative;
+  /* Stays in view (one window tall) while a tall form scrolls beside it. */
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  align-self: flex-start;
   flex: 1 1 60%;
   min-width: 0;
   overflow: hidden;
@@ -45,7 +54,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1.5rem;
+  /* The top padding keeps room for the "BugBeat home" link, so the card
+     never slides under it on short screens. */
+  padding: 3.25rem 1.5rem 2rem;
   border-left: 1px solid var(--border);
 }
 
@@ -507,6 +518,22 @@
 }
 .auth-linkbtn:hover:not(:disabled) { text-decoration: underline; }
 .auth-linkbtn:disabled { color: var(--text-muted); cursor: default; }
+
+/* ── Short screens (small laptops, or a zoomed-in browser) ── */
+/* Tighter spacing so the whole form, sign-up included, fits on the
+   screen (or nearly) instead of running off the bottom. */
+@media (max-height: 760px) {
+  .auth-form-panel { padding: 2.9rem 1.5rem 1.25rem; }
+  .auth-card       { padding: 1.5rem 2rem; }
+  .auth-title      { font-size: 1.3rem; margin-bottom: 0.15rem; }
+  .auth-subtitle   { margin-bottom: 1rem; }
+  .auth-form       { gap: 0.7rem; }
+  .auth-field      { gap: 0.25rem; }
+  .auth-field input { height: 38px; padding-top: 0.45rem; padding-bottom: 0.45rem; }
+  .auth-btn        { height: 40px; margin-top: 0.25rem; }
+  .auth-divider    { margin: 0.85rem 0; }
+  .auth-switch     { margin-top: 0.9rem; }
+}
 
 /* ── Auth responsive ─────────────────────────── */
 @media (max-width: 480px) {
