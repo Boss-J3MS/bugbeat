@@ -54,9 +54,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  /* The top padding keeps room for the "BugBeat home" link, so the card
+  /* The top padding keeps room for the "BugBeat home" button, so the card
      never slides under it on short screens. */
-  padding: 3.25rem 1.5rem 2rem;
+  padding: 3.75rem 1.5rem 2rem;
   border-left: 1px solid var(--border);
 }
 
@@ -76,17 +76,18 @@
   z-index: 2;
 }
 
-/* Link back to the landing page, top-left of the form panel. */
+/* Link back to the landing page, top-left of the form panel. Styled as
+   a button (cb-btn cb-btn--ghost), level with the theme toggle on the
+   right. It stays a link, since it goes to another page. */
 .auth-home-link {
   position: absolute;
-  top: 1.15rem;
+  top: 1rem;
   left: 1.5rem;
-  font-size: 0.85rem;
-  color: var(--text-muted);
+  z-index: 2;
   text-decoration: none;
 }
-.auth-home-link:hover { color: var(--accent); }
-.auth-home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
+.auth-home-link:hover { color: var(--accent); border-color: var(--accent); }
+.auth-home-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ── Code-rain background ─────────────────────── */
 /* Fills the visual panel (not the whole page) — drawn and animated in
@@ -523,7 +524,7 @@
 /* Tighter spacing so the whole form, sign-up included, fits on the
    screen (or nearly) instead of running off the bottom. */
 @media (max-height: 760px) {
-  .auth-form-panel { padding: 2.9rem 1.5rem 1.25rem; }
+  .auth-form-panel { padding: 3.5rem 1.5rem 1.25rem; }
   .auth-card       { padding: 1.5rem 2rem; }
   .auth-title      { font-size: 1.3rem; margin-bottom: 0.15rem; }
   .auth-subtitle   { margin-bottom: 1rem; }
