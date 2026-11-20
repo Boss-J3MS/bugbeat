@@ -1841,7 +1841,8 @@ function getDiscount(price, percent) {
 
 const area = calculateArea(10, 5);
 const price = getDiscount(100, 20);
-console.log(formatCurrency(price));`},
+console.log('Area: ' + area);
+console.log('Price: ' + formatCurrency(price));`},
 
   warnings: { lang: 'javascript', code:
 `// Minor warnings — works but has bad practices
