@@ -255,9 +255,11 @@ app.post('/analyze', async (req, res) => {
   // Only Auto-detect works out the language itself.
   const languageRule = langName
     ? `The user selected ${langName}. Treat the code strictly as ${langName} and check it only against ${langName} rules.
-Do NOT guess or switch to another language. If a line is not valid ${langName} (for example, it is written in a different programming language), mark it "error" (or "critical" if the code cannot run at all) with a message like "Not valid ${langName} syntax", and in the suggestion explain how to write it in ${langName} or to choose the correct language.
+Do NOT guess or switch to another language. Mark EVERY line that is not valid ${langName} (for example, a line written in a different programming language) "critical", because the program cannot compile or run, with a message like "Not valid ${langName} syntax". In the suggestion, explain how to write it in ${langName}, or to choose the correct language.
 Set "language" to "${lang}".`
     : `The user chose Auto-detect. First work out which programming language the code is written in, then analyze it as that language.
+A program must be written in ONE language. If the code mixes programming languages (for example, a Java class, then Python functions, then C code), use the language of the first line that is not a comment, and mark EVERY line that is not valid in that language "critical", because the program cannot compile or run, with a message like "Mixed languages: this line is Python, not Java". In the suggestion, tell the user to analyze one language at a time.
+These are NOT mixed languages: HTML in a PHP file, SQL, JSON or a regular expression inside a string, and comments.
 Set "language" to one of: "javascript", "python", "typescript", "java", "c", "cpp", "kotlin", "php", or "other".`;
 
   const prompt = `You are a code analysis engine. Analyze every line of the following ${langLabel}code.
@@ -271,7 +273,7 @@ Give EACH line one severity, using these definitions:
 - "clean": everything else.
 
 Rules:
-1. Report each problem ONCE, on the line that has to be changed to fix it. Do NOT also flag the lines that call that code, the data that triggers it, or the line that prints the wrong result. Those lines stay "clean".
+1. Report each problem ONCE, on the line that has to be changed to fix it. Do NOT also flag the lines that call that code, the data that triggers it, or the line that prints the wrong result. Those lines stay "clean". (Lines written in a different language are the exception: mark each of them, as described above.)
 2. Only report problems the code itself shows. Do not flag missing input validation, a parameter that "might" be null, or missing error handling, unless the code shows the problem can happen (for example, the result of find() is used without checking for undefined, or a 0 is passed to a division).
 3. Do not flag style choices that are valid in this language: naming, formatting, brace style, optional semicolons, or a different but correct way of writing something.
 4. If you are not sure that a line has a problem, mark it "clean".
