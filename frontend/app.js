@@ -354,6 +354,9 @@ const progressFill   = document.getElementById('progress-fill');
 const currentLine    = document.getElementById('current-line');
 const issueList      = document.getElementById('issue-list');
 const issueCount     = document.getElementById('issue-count');
+// The panels' starting text, put back when the user presses Clear.
+const ISSUES_EMPTY_HTML    = issueList?.innerHTML || '';
+const SEQUENCER_EMPTY_HTML = sequencer?.innerHTML || '';
 const mlComplexityEl = document.getElementById('ml-complexity');
 const mlUnavailableEl= document.getElementById('ml-complexity-unavailable');
 const mlRiskBadge    = document.getElementById('ml-risk-badge');
@@ -1975,7 +1978,28 @@ if (clearBtn) {
     hideError();
     if (mlComplexityEl)  mlComplexityEl.hidden  = true;
     if (mlUnavailableEl) mlUnavailableEl.hidden = true;
+    clearResults();
   });
+}
+
+// Clear also empties the results of the last analysis: the music stops
+// (there are no beats left to play), and the Issues panel, the Rhythm
+// panel and the counts go back to how they look before any analysis.
+function clearResults() {
+  stopPlayback();
+  playIndex = 0;
+  beatData  = [];
+  lastRisk  = null;
+  issueCount.textContent = '0';
+  issueList.removeAttribute('role');
+  issueList.removeAttribute('aria-label');
+  issueList.innerHTML = ISSUES_EMPTY_HTML;
+  sequencer.innerHTML = SEQUENCER_EMPTY_HTML;
+  ['clean', 'warning', 'error', 'critical'].forEach(sev => {
+    const el = document.getElementById(`stat-${sev}`);
+    if (el) el.textContent = '—';
+  });
+  announce('Cleared the code and the analysis results.');
 }
 
 if (demoSelect) {
