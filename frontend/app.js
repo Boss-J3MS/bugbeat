@@ -327,6 +327,7 @@ const outputBody     = document.getElementById('output-body');
 const outputStatus   = document.getElementById('output-status');
 const outputMeta     = document.getElementById('output-meta');
 const outputCloseBtn = document.getElementById('output-close-btn');
+const outputMinBtn   = document.getElementById('output-min-btn');
 const clearBtn       = document.getElementById('clear-btn');
 const demoSelect     = document.getElementById('demo-select');
 const lineCount      = document.getElementById('line-count');
@@ -1505,8 +1506,21 @@ function escOutputHtml(str) {
   }[c]));
 }
 
-function showOutputPanel()  { outputPanel.hidden = false; }
-function closeOutputPanel() { outputPanel.hidden = true; }
+// Run opens the panel (restoring it if it was minimized, so the new
+// output is in view); Close hides it; Minimize keeps only its header,
+// with the status and run time, visible.
+function showOutputPanel()  { outputPanel.hidden = false; setOutputMinimized(false); }
+function closeOutputPanel() { outputPanel.hidden = true;  setOutputMinimized(false); }
+
+function setOutputMinimized(minimized) {
+  outputPanel.classList.toggle('cb-panel--minimized', minimized);
+  if (!outputMinBtn) return;
+  const label = minimized ? 'Restore output' : 'Minimize output';
+  outputMinBtn.textContent = minimized ? '+' : '–';
+  outputMinBtn.title = label;
+  outputMinBtn.setAttribute('aria-label', label);
+  outputMinBtn.setAttribute('aria-expanded', String(!minimized));
+}
 
 function renderOutputLoading() {
   outputStatus.textContent = '…';
@@ -1594,6 +1608,8 @@ if (runBtn) {
 }
 
 if (outputCloseBtn) outputCloseBtn.addEventListener('click', closeOutputPanel);
+if (outputMinBtn) outputMinBtn.addEventListener('click', () =>
+  setOutputMinimized(!outputPanel.classList.contains('cb-panel--minimized')));
 
 // ═══════════════════════════════════════════════
 // ML COMPLEXITY (RF + NN + CodeBERT ensemble)

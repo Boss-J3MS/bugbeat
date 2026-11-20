@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=35" />
+  <link rel="stylesheet" href="style.css?v=36" />
   <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
@@ -289,7 +289,8 @@
         <span class="cb-panel__title">Output</span>
         <span id="output-status" class="cb-badge">—</span>
         <span id="output-meta" class="cb-meta"></span>
-        <button id="output-close-btn" class="cb-btn cb-btn--ghost" title="Close output">✕</button>
+        <button id="output-min-btn" class="cb-btn cb-btn--ghost" title="Minimize output" aria-label="Minimize output" aria-expanded="true" aria-controls="output-body">–</button>
+        <button id="output-close-btn" class="cb-btn cb-btn--ghost" title="Close output" aria-label="Close output">✕</button>
       </div>
       <div id="output-body" class="cb-output-body">
         <div class="cb-empty-state">
@@ -697,7 +698,7 @@
 
   <script src="popover.js?v=2"></script>
   <script src="magenta.js?v=1"></script>
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=31"></script>
   <script src="history.js?v=7"></script>
   <script src="notif-view.js?v=5"></script>
   <script src="banner.js"></script>

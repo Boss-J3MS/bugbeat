@@ -1713,7 +1713,14 @@ body, .cb-panel, .cb-header, input, textarea, select, button {
 
 #output-panel .cb-panel__header { gap: 0.6rem; }
 #output-panel .cb-panel__title  { margin-right: auto; }
-#output-close-btn { height: 24px; padding: 0 8px; font-size: 0.75rem; }
+#output-close-btn,
+#output-min-btn   { height: 24px; padding: 0 8px; font-size: 0.75rem; }
+#output-min-btn   { min-width: 26px; justify-content: center; }
+
+/* Minimized: only the header (title, status, run time and buttons) shows. */
+.cb-panel--output.cb-panel--minimized { min-height: 0; }
+.cb-panel--output.cb-panel--minimized .cb-output-body { display: none; }
+.cb-panel--output.cb-panel--minimized .cb-panel__header { border-bottom: none; }
 
 .cb-badge--ok    { background: var(--clean-bg);    color: var(--clean);    border-color: var(--clean); }
 .cb-badge--error { background: var(--error-bg);    color: var(--error);    border-color: var(--error); }
