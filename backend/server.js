@@ -2079,18 +2079,18 @@ app.patch('/notifications/:id/read', requireAuth, async (req, res) => {
 // Judge0 CE (the original plan) dropped its free daily-quota tier and is
 // now pay-per-use-only on RapidAPI, which requires a credit card on file.
 // paiza.io's public "guest" API key needs no signup/card and is free —
-// tradeoffs: ~2s execution cap, no TypeScript support, and it's a
-// best-effort community service with no uptime guarantee.
+// tradeoffs: ~2s execution cap, and it's a best-effort community
+// service with no uptime guarantee.
 const PAIZA_API_URL = process.env.PAIZA_API_URL || 'https://api.paiza.io';
 const PAIZA_API_KEY = process.env.PAIZA_API_KEY || 'guest';
 
 // Maps the frontend's lang-select values to paiza.io language ids.
-// 'auto' has no fixed runtime, and 'typescript' isn't offered by paiza.io's
-// guest runner — both are intentionally left out, so the frontend blocks
-// Run (with a specific message for each case) before it ever reaches here.
+// 'auto' has no fixed runtime, so it is left out and the frontend blocks
+// Run before it ever reaches here.
 const PAIZA_LANGUAGE_IDS = {
   javascript: 'javascript',
   python:     'python3',
+  typescript: 'typescript',
   java:       'java',
   c:          'c',
   cpp:        'cpp',
@@ -2126,11 +2126,7 @@ app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Code is too long to run (max 20,000 characters).' });
   }
   if (!paizaLang) {
-    return res.status(400).json({
-      error: lang === 'typescript'
-        ? "TypeScript can't be run directly — try JavaScript instead."
-        : 'Pick a specific language (not Auto-detect) before running.'
-    });
+    return res.status(400).json({ error: 'Pick a specific language (not Auto-detect) before running.' });
   }
 
   // PHP only runs what comes after an opening <?php tag; without one it

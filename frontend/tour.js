@@ -29,7 +29,7 @@
     { target: '#analyze-btn', title: 'Analyze',
       text: 'Checks your code for errors and turns the results into a rhythm you can see and hear. Each analysis is saved to your History.' },
     { target: '#run-btn', title: 'Run your code',
-      text: 'Runs the code and shows its output in a panel below. Pick a language first, since Auto-detect and TypeScript can\'t be run.' },
+      text: 'Runs the code and shows its output in a panel below. It unlocks once you Analyze the code.' },
     { target: '#clear-btn', title: 'Clear',
       text: 'Empties the editor and removes the highlights so you can start over.' },
 

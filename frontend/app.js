@@ -445,6 +445,9 @@ function clearDecorations() {
 
 // ── State ──────────────────────────────────────
 let beatData     = [];
+// The code as it was at the last Analyze. Run works only on analyzed code:
+// editing the code locks Run again until the next Analyze.
+let analyzedCode = null;
 let isPlaying    = false;
 // Paused (not stopped): the next Play continues from the same code line,
 // and from the same point in the music when the music source is unchanged.
@@ -1455,6 +1458,7 @@ analyzeBtn.addEventListener('click', async () => {
       }
     }
     beatData = lines;
+    analyzedCode = code;
     renderSequencer(lines);
     renderIssues(lines.filter(l => l.severity !== 'clean'));
     updateStats(lines);
@@ -1496,9 +1500,9 @@ async function analyzeWithBackend(code, lang) {
 // ═══════════════════════════════════════════════
 // RUN / OUTPUT PANEL (code execution via paiza.io's free guest runner)
 // ═══════════════════════════════════════════════
-// TypeScript isn't offered by paiza.io's guest runner, so it's left out
-// here (and on the backend) — Run shows a specific message for it below.
-const RUNNABLE_LANGS = new Set(['javascript', 'python', 'java', 'c', 'cpp', 'kotlin', 'php']);
+// Every language in the list can run except Auto-detect (it has no fixed
+// language); Run shows a message for it below.
+const RUNNABLE_LANGS = new Set(['javascript', 'python', 'typescript', 'java', 'c', 'cpp', 'kotlin', 'php']);
 
 function escOutputHtml(str) {
   return String(str ?? '').replace(/[&<>"']/g, c => ({
@@ -1576,11 +1580,7 @@ if (runBtn) {
 
     if (!RUNNABLE_LANGS.has(lang)) {
       showOutputPanel();
-      renderOutputError(
-        lang === 'typescript'
-          ? "TypeScript can't be run directly — try JavaScript instead."
-          : 'Pick a specific language (not Auto-detect) before running.'
-      );
+      renderOutputError('Pick a specific language (not Auto-detect) before running.');
       return;
     }
 
@@ -1601,8 +1601,8 @@ if (runBtn) {
     } catch (err) {
       renderOutputError(err.message || 'Could not run the code. Try again.');
     } finally {
-      runBtn.disabled = getCode().trim().length === 0;
       runBtn.innerHTML = '<span class="cb-btn__icon">▶</span> Run';
+      updateAnalyzeBtn();
     }
   });
 }
@@ -1957,16 +1957,28 @@ console.log(fetchUserOrders(42))`}
 // ═══════════════════════════════════════════════
 function updateAnalyzeBtn() {
   const empty = getCode().trim().length === 0;
+  // Run needs an Analyze of the code exactly as it is now.
+  const analyzed = !empty && analyzedCode !== null && getCode() === analyzedCode;
   analyzeBtn.disabled = empty;
-  if (runBtn) runBtn.disabled = empty;
+  if (runBtn) runBtn.disabled = !analyzed;
   // Hover tips say why a button can't be pressed yet.
   setTip(analyzeBtn, empty ? 'Add some code first' : 'Check your code for issues');
-  if (runBtn) setTip(runBtn, empty ? 'Add some code first' : 'Run the code and show its output');
+  if (runBtn) setTip(runBtn, empty ? 'Add some code first'
+                           : analyzed ? 'Run the code and show its output'
+                           : 'Analyze the code first');
   // Hint over the empty editor. Only a truly empty editor counts, so a
   // few blank lines still hide it (the hint would sit on top of them).
   const placeholder = document.getElementById('editor-placeholder');
   if (placeholder) placeholder.hidden = getCode().length > 0;
 }
+
+// A session reopened from History counts as analyzed (its results are on
+// screen), so Run is available for it right away.
+function markAnalyzed() {
+  analyzedCode = getCode();
+  updateAnalyzeBtn();
+}
+window.markAnalyzed = markAnalyzed;
 
 // Sets the hover tip of a button. The tip lives on the button's .cb-tip
 // wrapper: a disabled button is faded out, which would fade the tip too.
@@ -2003,6 +2015,8 @@ if (clearBtn) {
 // (there are no beats left to play), and the Issues panel, the Rhythm
 // panel and the counts go back to how they look before any analysis.
 function clearResults() {
+  analyzedCode = null;
+  updateAnalyzeBtn();
   stopPlayback();
   playIndex = 0;
   beatData  = [];

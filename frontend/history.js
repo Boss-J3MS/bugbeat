@@ -309,6 +309,8 @@ function doRestoreSession(d) {
   if (snapshot?.submitted_code && typeof setCode === 'function') {
     setCode(snapshot.submitted_code, analysis.language?.toLowerCase() || 'javascript');
   }
+  // Its results are restored below, so it counts as analyzed: Run works.
+  if (snapshot?.submitted_code && typeof markAnalyzed === 'function') markAnalyzed();
   // Put the language list back to the session's language too, so the
   // next Analyze/Run checks it as that language.
   const langSel = document.getElementById('lang-select');
