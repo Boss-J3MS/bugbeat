@@ -58,7 +58,7 @@
 
   // ── Settings → Plan ─────────────────────────────
   const BILLING = { prepaid: 'Paid once', auto_renew: 'Auto-renew' };
-  const STATUS  = { paid: 'Paid', pending: 'Not completed', failed: 'Failed' };
+  const STATUS  = { paid: 'Paid', pending: 'Not completed', failed: 'Failed', expired: 'Expired' };
 
   async function loadPlanPane() {
     const p = await refreshPlan();
@@ -83,7 +83,7 @@
     $('set-renew-group').hidden = !renew;
     if (renew) {
       $('set-renew-text').textContent = renew.status === 'past_due'
-        ? `The last renewal payment failed. PayMongo will try your card again; Student Pro stays on until ${day(renew.next_charge)}.`
+        ? `The last renewal payment failed. Xendit will try again; Student Pro stays on until ${day(renew.next_charge)}.`
         : `${peso(renew.amount_centavos)} every ${renew.duration_days >= 365 ? 'year' : 'month'}. Next charge: ${day(renew.next_charge)}.`;
     }
 
@@ -117,10 +117,12 @@
         if (!res.ok) throw new Error(data.error);
         msg.textContent = data.message;
         msg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--success';
+        if (window.toast) toast('Auto-renew is off.', 'success', { silent: true });
         await loadPlanPane();
       } catch (e) {
         msg.textContent = e.message || 'Could not cancel auto-renew. Please try again.';
         msg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--error';
+        if (window.toast) toast('Could not turn off auto-renew.', 'error', { silent: true });
       } finally {
         msg.hidden = false;
         cancelBtn.disabled = false;

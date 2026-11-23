@@ -167,6 +167,7 @@
       }
     } catch (err) {
       showMsg(err.message, 'error');
+      if (window.toast) toast(err.message, 'error', { key: 'track' });
     } finally {
       busy = false;
       box.classList.remove('cb-tracks--busy');
@@ -182,9 +183,11 @@
       if (activeId === t.id) activeId = null;   // it keeps playing until removed or replaced
       showMsg('');
       render();
+      if (window.toast) toast(`Deleted "${t.name}" from My tracks.`, 'success');
     } catch (err) {
       row.classList.remove('cb-track--removing');
       showMsg(err.message, 'error');
+      if (window.toast) toast(err.message, 'error');
       render();
     }
   }
@@ -239,9 +242,11 @@
       activeId = data.track.id;
       showMsg('Saved to My tracks.', 'ok');
       render();
+      if (window.toast) toast(`Saved "${file.name}" to My tracks.`, 'success');
       setTimeout(() => { if (msgEl.textContent === 'Saved to My tracks.') showMsg(''); }, 4000);
     } catch (err) {
       showMsg(`Playing it now, but it wasn't saved: ${err.message}`, 'error');
+      if (window.toast) toast(`"${file.name}" is playing, but it wasn't saved to My tracks.`, 'error');
     } finally {
       busy = false;
       box.classList.remove('cb-tracks--busy');

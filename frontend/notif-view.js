@@ -163,6 +163,7 @@
     }
     try {
       await fetch(`${BACKEND_URL}/notifications/read-all`, { method: 'PATCH', headers: authHeaders() });
+      if (window.toast) toast('All notifications marked as read.', 'success', { key: 'notif' });
     } catch (err) {
       console.warn('Could not mark all notifications as read:', err.message);
     }

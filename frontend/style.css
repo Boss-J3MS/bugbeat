@@ -2427,3 +2427,80 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 .cb-pay-status--failed  { color: var(--critical); }
 a.cb-btn { text-decoration: none; }
 a.cb-btn[hidden] { display: none; }
+
+/* ── Toasts (toast.js) ───────────────────────────
+   Short messages in the bottom-right corner after an action (analysis
+   done, track deleted, setting saved…). They sit above the bug-report
+   button, over pop-ups, and under the guided tour. */
+.cb-toasts {
+  position: fixed;
+  right: 20px;
+  bottom: 84px;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.cb-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 6px 10px 12px;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 0.85rem;
+  line-height: 1.4;
+  animation: cb-toast-in 0.2s ease-out;
+}
+.cb-toast--out { animation: cb-toast-out 0.2s ease-in forwards; }
+.cb-toast--success { border-left-color: var(--clean); }
+.cb-toast--warning { border-left-color: var(--warning); }
+.cb-toast--error   { border-left-color: var(--critical); }
+.cb-toast__icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.cb-toast--success .cb-toast__icon { background: var(--clean); color: #fff; }
+.cb-toast--warning .cb-toast__icon { background: var(--warning); color: #000; }
+.cb-toast--error   .cb-toast__icon { background: var(--critical); color: #fff; }
+.cb-toast__msg { flex: 1; min-width: 0; padding-top: 1px; overflow-wrap: anywhere; }
+.cb-toast__close {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.cb-toast__close:hover,
+.cb-toast__close:focus-visible { color: var(--text); background: var(--bg-input); }
+@keyframes cb-toast-in  { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes cb-toast-out { to { opacity: 0; transform: translateX(16px); } }
+@media (max-width: 768px) {
+  /* Full width on phones, above the smaller bug-report button. */
+  .cb-toasts { left: 16px; right: 16px; bottom: 64px; width: auto; align-items: stretch; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cb-toast, .cb-toast--out { animation-duration: 1ms; }
+}

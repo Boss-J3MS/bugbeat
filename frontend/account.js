@@ -33,6 +33,7 @@
     msg.textContent = text;
     msg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--' + type;
     msg.hidden = false;
+    if (window.toast) toast(text, type === 'success' ? 'success' : 'error');
   }
 
   function setMode(withPassword) {

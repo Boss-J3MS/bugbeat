@@ -370,6 +370,7 @@ function doRestoreSession(d) {
   if (typeof setMusicStatus === 'function') {
     setMusicStatus(`✅ Session restored — ${analysis.language} · ${riskText(analysis.risk_level)} risk`, 'ok');
   }
+  if (window.toast) toast(`Session restored (${analysis.language} · ${riskText(analysis.risk_level)} risk).`, 'success');
 }
 
 // ── Pagination ─────────────────────────────────

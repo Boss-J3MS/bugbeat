@@ -84,7 +84,10 @@
     themeSelect.innerHTML = Object.entries(THEMES)
       .map(([key, t]) => `<option value="${key}">${t.label}</option>`).join('');
     themeSelect.value = currentTheme();
-    themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+    themeSelect.addEventListener('change', () => {
+      applyTheme(themeSelect.value);
+      if (window.toast) toast(`Theme: ${themeSelect.selectedOptions[0]?.textContent || themeSelect.value}`, 'info', { key: 'theme' });
+    });
   }
 
   function showText() {
@@ -123,6 +126,7 @@
     applyCodeSize(CODE_DEFAULT);
     showText();
     showCode();
+    if (window.toast) toast('Appearance reset to the default.', 'success', { key: 'theme' });
   });
 
   showText();

@@ -34,6 +34,10 @@
     el.textContent = text;
     el.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--' + type;
     el.hidden = !text;
+    // Messages in a role="status" box are already read out.
+    if (text && window.toast) {
+      toast(text, type === 'success' ? 'success' : 'error', { silent: el.getAttribute('role') === 'status' });
+    }
   }
 
   function niceError(err, fallback) {
@@ -212,6 +216,9 @@
   defaultLang.value = savedLang;
   defaultLang.addEventListener('change', () => {
     try { localStorage.setItem(DEFAULT_LANG_KEY, defaultLang.value); } catch (e) {}
+    if (window.toast) {
+      toast(`Default language saved: ${defaultLang.selectedOptions[0]?.textContent || defaultLang.value}`, 'success', { key: 'default-lang' });
+    }
   });
 
   // Apply it when the page opens. The editor loads a little later, so

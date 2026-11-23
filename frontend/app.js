@@ -126,8 +126,10 @@ if (bugreportSubmit) {
       bugreportMsg.textContent = data.message || 'Thanks — your bug report has been submitted.';
       bugreportMsg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--success';
       bugreportMsg.hidden = false;
+      if (window.toast) toast('Bug report sent. Thank you!', 'success');
       setTimeout(closeBugReportModal, 1500);
     } catch (err) {
+      if (window.toast) toast(err.message, 'error');
       bugreportMsg.textContent = err.message;
       bugreportMsg.className = 'cb-bugreport-modal__msg cb-bugreport-modal__msg--error';
       bugreportMsg.hidden = false;
@@ -266,8 +268,10 @@ if (notifMarkAll) {
         headers: authHeaders()
       });
       if (!res.ok) throw new Error('Failed to mark all as read');
+      if (window.toast) toast('All notifications marked as read.', 'success', { key: 'notif' });
     } catch (err) {
       console.warn('Could not mark all notifications as read:', err.message);
+      if (window.toast) toast('Could not mark the notifications as read.', 'error', { key: 'notif' });
     }
   });
 }
@@ -658,9 +662,11 @@ async function useAudioTrack(arrayBuffer, name) {
     setMusicStatus(`✅ "${name}" loaded${detected ? ` (about ${detected} BPM)` : ''} — replaces the synthesized music; ` +
                    'the BPM slider changes its speed', 'ok');
     updateNowPlaying();
+    if (window.toast) toast(`"${name}" is now the backing track${detected ? ` (about ${detected} BPM)` : ''}.`, 'success', { key: 'track' });
     return true;
   } catch(err) {
     setMusicStatus('⚠ Could not decode audio file. Try an MP3 or WAV.', 'error');
+    if (window.toast) toast('Could not play that audio file. Try an MP3 or WAV.', 'error', { key: 'track' });
     return false;
   }
 }
@@ -734,6 +740,7 @@ if (audioRemoveBtn) {
     audioLabel.textContent = 'Upload audio';
     audioRemoveBtn.hidden  = true;
     setMusicStatus('Audio removed — using synthesized music', '');
+    if (window.toast) toast('Track removed. Using the generated music again.', 'info', { key: 'track' });
     stopAudioFile();
     if (window.markActiveTrack) markActiveTrack(null);
     updateNowPlaying();
@@ -1002,7 +1009,10 @@ if (styleSelect) {
   if (!STYLE_PRESETS[saved]) saved = 'lofi';
   styleSelect.value = saved;
   applyMusicStyle(saved, { announce: false });
-  styleSelect.addEventListener('change', () => applyMusicStyle(styleSelect.value, { remember: true }));
+  styleSelect.addEventListener('change', () => {
+    applyMusicStyle(styleSelect.value, { remember: true });
+    if (window.toast) toast(`Music style: ${getStyle().name}`, 'info', { key: 'style' });
+  });
 }
 
 // ── "Now playing" line in the Playback panel ───
@@ -1491,7 +1501,10 @@ bpmRange.addEventListener('input', () => {
     Tone.getTransport().bpm.value = parseInt(bpmRange.value);
   }
 });
-bpmRange.addEventListener('change', () => saveMusicPreference());
+bpmRange.addEventListener('change', () => {
+  saveMusicPreference();
+  if (window.toast) toast(`Tempo set to ${bpmRange.value} BPM`, 'info', { key: 'bpm', silent: true, duration: 2000 });
+});
 
 // ═══════════════════════════════════════════════
 // ANALYZE
@@ -1548,12 +1561,20 @@ analyzeBtn.addEventListener('click', async () => {
     highlightEditorLines(lines);
     lastRisk = scoreLines(lines).riskLevel;
     announce(detectedNote + analysisSummary(lines, lastRisk));
+    if (window.toast) {
+      const found  = lines.filter(l => l.severity !== 'clean').length;
+      const asLang = LANG_LABELS[langSelect.value] ? ` (${LANG_LABELS[langSelect.value]})` : '';
+      toast(found ? `Analysis done${asLang}: ${found} issue${found === 1 ? '' : 's'} found.`
+                  : `Analysis done${asLang}: no issues found.`,
+            found ? 'warning' : 'success', { key: 'analyze', silent: true });
+    }
     refreshGroove();
     // ✅ Save analysis session to history
     await saveAnalysisToHistory(code, savedLang, lines);
   } catch (err) {
     // The daily limit message comes with a link to the plans.
     showError(err.message || 'Analysis failed. Try again.', { plans: !!err.limitReached });
+    if (window.toast) toast(err.limitReached ? 'Daily analysis limit reached.' : 'Analysis failed.', 'error', { key: 'analyze', silent: true });
     if (err.limitReached && window.refreshPlan) window.refreshPlan();
   } finally {
     analyzeBtn.disabled = false;
@@ -1672,6 +1693,7 @@ if (runBtn) {
     if (!RUNNABLE_LANGS.has(lang)) {
       showOutputPanel();
       renderOutputError('Pick a specific language (not Auto-detect) before running.');
+      if (window.toast) toast('Pick a specific language before running.', 'warning', { key: 'run' });
       return;
     }
 
@@ -1689,8 +1711,14 @@ if (runBtn) {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
       renderOutputResult(data);
+      if (window.toast) {
+        const ran = data.statusId === 3;
+        toast(ran ? 'Code ran successfully.' : `Run finished with a problem: ${data.status || 'Error'}.`,
+              ran ? 'success' : 'error', { key: 'run' });
+      }
     } catch (err) {
       renderOutputError(err.message || 'Could not run the code. Try again.');
+      if (window.toast) toast('Could not run the code.', 'error', { key: 'run' });
     } finally {
       runBtn.innerHTML = '<span class="cb-btn__icon">▶</span> Run';
       updateAnalyzeBtn();
@@ -1922,11 +1950,13 @@ async function saveAnalysisToHistory(code, lang, lines) {
     if (!res.ok) {
       const data = await res.json();
       console.warn('History save failed:', data?.error || res.status);
+      if (cbToken && window.toast) toast('This analysis could not be saved to History.', 'warning');
     }
 
   } catch (err) {
-    // Silent fail — never interrupt the user experience
+    // Never interrupts the user; only a small notice.
     console.warn('Could not save analysis to history:', err.message);
+    if (cbToken && window.toast) toast('This analysis could not be saved to History.', 'warning');
   }
 }
 
@@ -2108,6 +2138,7 @@ if (clearBtn) {
     if (mlUnavailableEl) mlUnavailableEl.hidden = true;
     if (mlLockedEl)      mlLockedEl.hidden      = true;
     clearResults();
+    if (window.toast) toast('Cleared the code and the results.', 'info', { key: 'clear', silent: true });
   });
 }
 
@@ -2139,20 +2170,27 @@ if (demoSelect) {
     if (!key) return;
     const demo = DEMOS[key];
     if (!demo) return;
+    // The option's name without its emoji, e.g. "Logic errors".
+    const label = (demoSelect.selectedOptions[0]?.textContent || '').replace(/^[^\p{L}]+/u, '');
     langSelect.value = demo.lang;
     setCode(demo.code, demo.lang);
     clearDecorations();
     hideError(); // loading a fresh demo is also a fresh start
     demoSelect.value = '';
+    if (window.toast) toast(`Loaded the "${label}" demo. Press Analyze to check it.`, 'info', { key: 'demo' });
   });
 }
 
-langSelect.addEventListener('change', () => {
+langSelect.addEventListener('change', (e) => {
   if (monacoEditor) {
     monaco.editor.setModelLanguage(
       monacoEditor.getModel(),
       getMonacoLang(langSelect.value)
     );
+  }
+  // Only when the user picked it (not when the saved default is applied).
+  if (e.isTrusted && window.toast) {
+    toast(`Language: ${langSelect.selectedOptions[0]?.textContent || langSelect.value}`, 'info', { key: 'lang', silent: true });
   }
 });
 
@@ -2398,9 +2436,11 @@ function renderIssues(issues) {
         await navigator.clipboard.writeText(text);
         btn.textContent = 'Copied!';
         announce('Fixed line copied.');
+        if (window.toast) toast('Fixed line copied.', 'success', { key: 'copy', silent: true });
       } catch {
         btn.textContent = 'Copy failed';
         announce('Could not copy the fixed line.');
+        if (window.toast) toast('Could not copy the fixed line.', 'error', { key: 'copy', silent: true });
       }
       setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
     });
