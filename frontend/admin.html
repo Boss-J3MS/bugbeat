@@ -16,7 +16,7 @@
   </script>
   <link rel="stylesheet" href="style.css?v=29" />
   <link rel="stylesheet" href="auth.css" />
-  <link rel="stylesheet" href="admin.css?v=10" />
+  <link rel="stylesheet" href="admin.css?v=11" />
 </head>
 <body>
 
@@ -29,6 +29,7 @@
       <button class="admin-nav__btn active" data-tab="stats"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="6" y1="20" x2="6" y2="13"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="18" y1="20" x2="18" y2="9"/></svg><span>Stats</span></button>
       <button class="admin-nav__btn" data-tab="users"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Users</span></button>
       <button class="admin-nav__btn" data-tab="analyses"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg><span>Analyses</span></button>
+      <button class="admin-nav__btn" data-tab="payments"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg><span>Payments</span></button>
       <button class="admin-nav__btn" data-tab="bugreports"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="6" width="8" height="14" rx="4"/><path d="M19 7l-3 2M5 7l3 2M19 19l-3-2M5 19l3-2M20 13h-4M4 13h4M10 4l1 2M14 4l-1 2"/></svg><span>Bug Reports</span></button>
       <button class="admin-nav__btn" data-tab="invites"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2"/><path d="M16 7l3 3"/><path d="M19 4l2 2"/></svg><span>Invites</span></button>
       <button class="admin-nav__btn" data-tab="broadcast"><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11v2a1 1 0 0 0 1 1h3l5 4V6L7 10H4a1 1 0 0 0-1 1z"/><path d="M16 9a3 3 0 0 1 0 6"/><path d="M19 6.5a7 7 0 0 1 0 11"/></svg><span>Broadcast</span></button>
@@ -168,6 +169,68 @@
             </tr>
           </thead>
           <tbody id="analyses-tbody"><tr><td colspan="8" class="admin-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ── PAYMENTS TAB ──────────────────────── -->
+    <!-- Student Pro: payments (PayMongo), who has Pro now, giving Pro to an
+         account, and turning prices on or off. Only PayMongo's webhook
+         marks a payment as paid; admins can't change payments by hand. -->
+    <div id="tab-payments" class="admin-tab">
+      <h2 class="admin-section-title">Payments <span id="pay-mode" class="admin-pay-mode" hidden>Test mode</span></h2>
+      <div class="admin-stats-grid admin-pay-stats">
+        <div class="admin-stat-card">
+          <div class="admin-stat-card__num" id="pay-pro-users">—</div>
+          <div class="admin-stat-card__label">On Student Pro now</div>
+        </div>
+        <div class="admin-stat-card">
+          <div class="admin-stat-card__num" id="pay-revenue">—</div>
+          <div class="admin-stat-card__label">Paid in total</div>
+          <div class="admin-stat-card__sub" id="pay-revenue-sub"></div>
+        </div>
+      </div>
+
+      <div class="admin-card">
+        <h3 class="admin-card__title">Give Student Pro</h3>
+        <p class="admin-invite-help">For panelists, testers or teammates: the account gets Student Pro for the number of days you choose, without paying. It starts after any Pro time the account already has.</p>
+        <form id="grant-form" class="admin-invite-form admin-grant-form" novalidate>
+          <input type="text" id="grant-user" class="admin-invite-input" autocomplete="off" placeholder="Username or email" aria-label="Username or email" />
+          <input type="number" id="grant-days" class="admin-invite-input admin-grant-days" min="1" max="730" value="30" aria-label="Days" />
+          <input type="text" id="grant-note" class="admin-invite-input" maxlength="255" autocomplete="off" placeholder="Note (optional)" aria-label="Note" />
+          <button type="submit" id="grant-btn" class="cb-btn cb-btn--primary">Give Pro</button>
+        </form>
+        <div id="grant-msg" class="admin-invite-msg" hidden></div>
+      </div>
+
+      <h3 class="admin-subtitle">On Student Pro now</h3>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>User</th><th>How</th><th>Until</th><th>Note</th><th>Actions</th></tr></thead>
+          <tbody id="pro-tbody"><tr><td colspan="5" class="admin-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <h3 class="admin-subtitle">Payments</h3>
+      <div class="admin-filter" id="payment-filter" role="tablist" aria-label="Filter payments by status">
+        <button type="button" class="admin-filter__btn is-active" data-status="" role="tab" aria-selected="true">All</button>
+        <button type="button" class="admin-filter__btn" data-status="paid" role="tab" aria-selected="false">Paid</button>
+        <button type="button" class="admin-filter__btn" data-status="pending" role="tab" aria-selected="false">Not completed</button>
+        <button type="button" class="admin-filter__btn" data-status="failed" role="tab" aria-selected="false">Failed</button>
+      </div>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>ID</th><th>User</th><th>Plan</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody id="payments-tbody"><tr><td colspan="6" class="admin-empty">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <h3 class="admin-subtitle">Prices</h3>
+      <p class="admin-invite-help">A price that is off disappears from the Plans page. Past payments keep it.</p>
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead><tr><th>Plan</th><th>Billing</th><th>Amount</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody id="prices-tbody"><tr><td colspan="5" class="admin-empty">Loading…</td></tr></tbody>
         </table>
       </div>
     </div>
@@ -1263,9 +1326,143 @@
       loadBroadcasts();
     });
 
+    // ── Payments ───────────────────────────────
+    const peso = c => '₱' + (Number(c || 0) / 100).toLocaleString('en-PH', { minimumFractionDigits: 2 });
+    const periodText = d => (d >= 365 ? '1 year' : `${d} days`);
+    const billingText = (billing, days) =>
+      billing === 'auto_renew' ? `Auto-renew, every ${d2(days)}` : `Pay once, ${periodText(days)}`;
+    function d2(days) { return days >= 365 ? 'year' : 'month'; }
+    const PAY_STATUS = {
+      paid:    { label: 'Paid',          cls: 'admin-invite-status--active' },
+      pending: { label: 'Not completed', cls: 'admin-invite-status--used' },
+      failed:  { label: 'Failed',        cls: 'admin-invite-status--off' }
+    };
+    const SOURCE_TEXT = { prepaid: 'Paid once', auto_renew: 'Auto-renew', admin_grant: 'Given by admin' };
+    let paymentStatus = '';
+
+    async function loadPayments() {
+      const proBody = document.getElementById('pro-tbody');
+      const payBody = document.getElementById('payments-tbody');
+      const priceBody = document.getElementById('prices-tbody');
+      try {
+        const q = paymentStatus ? `?status=${paymentStatus}` : '';
+        const data = await adminFetch(`/admin/billing${q}`);
+        document.getElementById('pay-mode').hidden = !data.test_mode;
+        document.getElementById('pay-pro-users').textContent = data.pro_users;
+        document.getElementById('pay-revenue').textContent = peso(data.revenue_centavos);
+        document.getElementById('pay-revenue-sub').textContent = data.test_mode ? 'Test payments, no real money' : '';
+
+        proBody.innerHTML = data.pro.map(s => {
+          let how = SOURCE_TEXT[s.source] || s.source;
+          if (s.source === 'admin_grant' && s.granted_by) how += ` (${esc(s.granted_by)})`;
+          if (s.source === 'auto_renew') how += s.auto_renew ? (s.status === 'past_due' ? ', payment failed' : ', renews') : ', cancelled';
+          return `
+          <tr>
+            <td>${esc(s.username)}<div class="admin-sub-line">${esc(s.email)}</div></td>
+            <td>${how}</td>
+            <td>${formatDate(s.ends_at)}</td>
+            <td>${s.note ? esc(s.note) : '<span class="admin-empty-inline">—</span>'}</td>
+            <td class="admin-actions">${s.source === 'admin_grant'
+              ? `<button class="cb-btn cb-btn--ghost admin-btn-sm admin-btn-danger" data-action="end-grant" data-id="${esc(s.id)}" data-username="${esc(s.username)}">End now</button>`
+              : '<span class="admin-empty-inline">—</span>'}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="5" class="admin-empty">No one is on Student Pro right now</td></tr>';
+
+        payBody.innerHTML = data.payments.map(p => {
+          const st = PAY_STATUS[p.status] || PAY_STATUS.pending;
+          return `
+          <tr>
+            <td>${esc(p.id)}</td>
+            <td>${esc(p.username)}<div class="admin-sub-line">${esc(p.email)}</div></td>
+            <td>${billingText(p.billing, p.duration_days)}</td>
+            <td>${peso(p.amount_centavos)}</td>
+            <td><span class="admin-invite-status ${st.cls}">${st.label}</span></td>
+            <td>${formatDateTime(p.paid_at || p.created_at)}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="6" class="admin-empty">No payments yet</td></tr>';
+
+        priceBody.innerHTML = data.prices.map(p => `
+          <tr>
+            <td>${esc(p.plan_name)}</td>
+            <td>${billingText(p.billing, p.duration_days)}</td>
+            <td>${peso(p.amount_centavos)}</td>
+            <td><span class="admin-invite-status ${p.is_active ? 'admin-invite-status--active' : 'admin-invite-status--off'}">${p.is_active ? 'On' : 'Off'}</span></td>
+            <td class="admin-actions"><button class="cb-btn cb-btn--ghost admin-btn-sm" data-action="toggle-price" data-id="${esc(p.id)}" data-on="${p.is_active ? 1 : 0}">${p.is_active ? 'Turn off' : 'Turn on'}</button></td>
+          </tr>`).join('') || '<tr><td colspan="5" class="admin-empty">No prices</td></tr>';
+        loadSucceeded('payments');
+      } catch (err) {
+        if (/billing tables are missing/i.test(err.message)) {
+          const note = `<tr><td colspan="6" class="admin-empty">${esc(err.message)}</td></tr>`;
+          proBody.innerHTML = payBody.innerHTML = priceBody.innerHTML = note;
+          return;
+        }
+        proBody.innerHTML = loadingRow(5); payBody.innerHTML = loadingRow(6); priceBody.innerHTML = loadingRow(5);
+        loadFailed('payments', err);
+      }
+    }
+
+    document.getElementById('payment-filter').addEventListener('click', e => {
+      const btn = e.target.closest('.admin-filter__btn');
+      if (!btn) return;
+      document.querySelectorAll('#payment-filter .admin-filter__btn').forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-selected', String(on));
+      });
+      paymentStatus = btn.dataset.status;
+      loadPayments();
+    });
+
+    document.getElementById('grant-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const btn = document.getElementById('grant-btn');
+      const msg = document.getElementById('grant-msg');
+      msg.hidden = true;
+      btn.disabled = true;
+      try {
+        const data = await adminFetch('/admin/billing/grant', {
+          method: 'POST',
+          body: JSON.stringify({
+            user: document.getElementById('grant-user').value.trim(),
+            days: Number(document.getElementById('grant-days').value),
+            note: document.getElementById('grant-note').value.trim()
+          })
+        });
+        msg.textContent = data.message;
+        msg.className = 'admin-invite-msg admin-invite-msg--ok';
+        document.getElementById('grant-user').value = '';
+        document.getElementById('grant-note').value = '';
+        loadPayments();
+      } catch (err) {
+        msg.textContent = err.message;
+        msg.className = 'admin-invite-msg admin-invite-msg--error';
+      } finally {
+        msg.hidden = false;
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById('tab-payments').addEventListener('click', async e => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      try {
+        if (btn.dataset.action === 'end-grant') {
+          if (!await confirm(`End ${btn.dataset.username}'s Student Pro grant now?`)) return;
+          await adminFetch(`/admin/billing/grants/${btn.dataset.id}/revoke`, { method: 'POST' });
+        } else if (btn.dataset.action === 'toggle-price') {
+          await adminFetch(`/admin/billing/prices/${btn.dataset.id}`, {
+            method: 'PATCH', body: JSON.stringify({ is_active: btn.dataset.on !== '1' })
+          });
+        } else return;
+      } catch (err) {
+        setStatus(`Could not update: ${err.message}`);
+      }
+      loadPayments();
+    });
+
     // ── Init ───────────────────────────────────
     Object.assign(LOADERS, {
-      stats: loadStats, users: loadUsers, analyses: loadAnalyses,
+      stats: loadStats, users: loadUsers, analyses: loadAnalyses, payments: loadPayments,
       bugreports: loadBugReports, invites: loadInvites, broadcasts: loadBroadcasts
     });
     function loadAll() {
@@ -1277,4 +1474,4 @@
   <script src="logout.js?v=2"></script>
 
 </body>
-</html>
+</html>

@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugBeat — Payment</title>
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css?v=37" />
+  <link rel="stylesheet" href="plans.css?v=1" />
+</head>
+<body class="pl-page">
+  <header class="pl-top">
+    <a href="index.html" class="pl-brand">
+      <img src="bugbeatMark.png" alt="" width="28" height="28" />
+      <span>BugBeat</span>
+    </a>
+    <nav class="pl-top__actions">
+      <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+    </nav>
+  </header>
+
+  <main class="pl-main">
+    <!-- PayMongo sends the student back here. Pro is turned on by PayMongo's
+         webhook, so this page only asks the server for the result. -->
+    <div class="pr-box" role="status" aria-live="polite">
+      <div id="pr-icon" class="pr-icon" aria-hidden="true">⏳</div>
+      <h1 id="pr-title" class="pr-title">Confirming your payment…</h1>
+      <p id="pr-text" class="pr-text">This usually takes a few seconds.</p>
+      <div class="pr-actions">
+        <a href="index.html" class="cb-btn cb-btn--primary">Back to BugBeat</a>
+        <a id="pr-plans" href="plans.html" class="cb-btn cb-btn--ghost">Plans</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="theme.js"></script>
+  <script>
+    (function () {
+      const BACKEND_URL =
+        (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+          ? 'http://localhost:3000'
+          : 'https://bugbeat.onrender.com';
+      const token = localStorage.getItem('cb_token');
+      const q = new URLSearchParams(location.search);
+      const paymentId = q.get('payment');
+      const subId = q.get('subscription');
+      const $ = (id) => document.getElementById(id);
+      const day = (d) => new Date(d).toLocaleDateString('en-PH', { year: 'numeric', month: 'long', day: 'numeric' });
+
+      function show(icon, title, text) {
+        $('pr-icon').textContent = icon;
+        $('pr-title').textContent = title;
+        $('pr-text').textContent = text;
+      }
+
+      if (q.get('cancelled')) {
+        show('↩', 'Payment cancelled', 'You were not charged. You can choose a plan again any time.');
+        return;
+      }
+      if (!token || !(/^\d+$/.test(paymentId || '') || /^\d+$/.test(subId || ''))) {
+        show('ℹ', 'Nothing to confirm', 'Open the Plans page to buy Student Pro.');
+        return;
+      }
+
+      const url = paymentId ? `/billing/payment/${paymentId}` : `/billing/subscription/${subId}`;
+      const started = Date.now();
+      async function check() {
+        try {
+          const res = await fetch(`${BACKEND_URL}${url}`, { headers: { Authorization: `Bearer ${token}` } });
+          const data = await res.json();
+          if (res.ok && data.status === 'paid') {
+            show('✅', 'Student Pro is on', data.pro_until ? `Thank you! Student Pro is active until ${day(data.pro_until)}.` : 'Thank you! Student Pro is active.');
+            return;
+          }
+          if (res.ok && data.status === 'failed') {
+            show('⚠', 'Payment failed', 'The payment did not go through and you were not charged. Please try again with another card or method.');
+            return;
+          }
+        } catch (e) {}
+        if (Date.now() - started > 90000) {
+          show('⏳', 'Still confirming', 'PayMongo has not confirmed the payment yet. Refresh this page in a minute; if you paid, Student Pro turns on as soon as the confirmation arrives.');
+          return;
+        }
+        setTimeout(check, 2500);
+      }
+      check();
+    })();
+  </script>
+</body>
+</html>

@@ -24,7 +24,7 @@
       } catch (e) {}
     })();
   </script>
-  <link rel="stylesheet" href="style.css?v=36" />
+  <link rel="stylesheet" href="style.css?v=37" />
   <link rel="stylesheet" href="history.css?v=4" />
 
   <!-- Monaco Editor -->
@@ -109,6 +109,8 @@
   <div id="error-banner" class="cb-error-banner" role="alert" aria-live="assertive" hidden>
     <span class="cb-error-banner__icon">⚠</span>
     <span id="error-banner-msg"></span>
+    <!-- Shown with the daily-limit message (app.js showError). -->
+    <a id="error-banner-action" class="cb-error-banner__action" href="plans.html" hidden>See plans</a>
   </div>
 
   <!-- Settings sidebar (docked left): sound + account controls. The controls
@@ -133,6 +135,11 @@
     <div class="cb-menu__section">
       <div class="cb-menu__heading">Account</div>
       <span id="user-greeting" class="cb-user-greeting cb-menu__user"></span>
+      <!-- The account's plan and an Upgrade button (billing-ui.js). -->
+      <div id="plan-badge" class="cb-plan-badge" hidden>
+        <span id="plan-badge-text" class="cb-plan-badge__text"></span>
+        <a id="plan-badge-btn" href="plans.html" class="cb-btn cb-btn--primary cb-plan-badge__btn">Upgrade</a>
+      </div>
       <button id="history-btn" class="cb-btn cb-btn--ghost cb-menu__item" title="View analysis history" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg><span>History</span></button>
       <button id="settings-btn" class="cb-btn cb-btn--ghost cb-menu__item" type="button" data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>Settings</span></button>
       <button id="admin-link" type="button" class="cb-btn cb-btn--ghost cb-menu__item" hidden data-menu-close><svg class="cb-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><span>Admin</span></button>
@@ -179,6 +186,10 @@
       </div>
       <div id="ml-complexity-unavailable" class="cb-ml cb-ml--unavailable" hidden>
         Defect risk prediction is unavailable right now — showing the line-by-line analysis only.
+      </div>
+      <!-- Free plan: the defect-risk score is a Student Pro feature. -->
+      <div id="ml-complexity-locked" class="cb-ml cb-ml--locked" hidden>
+        🔒 The defect-risk score is part of Student Pro. <a href="plans.html">See plans</a>
       </div>
       <div id="issue-list" class="cb-issue-list">
         <div class="cb-empty-state">
@@ -461,6 +472,7 @@
         <button type="button" class="cb-set__tab is-active" role="tab" id="set-tab-profile" aria-controls="set-pane-profile" aria-selected="true" data-pane="profile">Profile</button>
         <button type="button" class="cb-set__tab" role="tab" id="set-tab-prefs" aria-controls="set-pane-prefs" aria-selected="false" data-pane="prefs" tabindex="-1">Preferences</button>
         <button type="button" class="cb-set__tab" role="tab" id="set-tab-security" aria-controls="set-pane-security" aria-selected="false" data-pane="security" tabindex="-1">Security</button>
+        <button type="button" class="cb-set__tab" role="tab" id="set-tab-plan" aria-controls="set-pane-plan" aria-selected="false" data-pane="plan" tabindex="-1">Plan</button>
       </div>
 
       <div class="cb-set__body">
@@ -586,6 +598,38 @@
             </form>
           </div>
         </section>
+
+        <!-- Plan (billing-ui.js): plan, today's analyses, auto-renew, payments. -->
+        <section id="set-pane-plan" class="cb-set__pane" role="tabpanel" aria-labelledby="set-tab-plan" hidden>
+          <div class="cb-set__group">
+            <h3 class="cb-set__title">Your plan</h3>
+            <div class="cb-set__row">
+              <div>
+                <div id="set-plan-name" class="cb-set__name">—</div>
+                <div id="set-plan-detail" class="cb-set__muted">Loading…</div>
+              </div>
+              <a id="set-plan-btn" href="plans.html" class="cb-btn cb-btn--primary">See plans</a>
+            </div>
+            <div id="set-plan-usage" class="cb-set__hint"></div>
+          </div>
+          <div id="set-renew-group" class="cb-set__group" hidden>
+            <h3 class="cb-set__title">Auto-renew</h3>
+            <div class="cb-set__row">
+              <span id="set-renew-text" class="cb-set__muted"></span>
+              <button type="button" id="set-renew-cancel" class="cb-btn cb-btn--ghost cb-btn--danger">Cancel auto-renew</button>
+            </div>
+            <div id="set-renew-msg" class="cb-bugreport-modal__msg" role="status" hidden></div>
+          </div>
+          <div class="cb-set__group">
+            <h3 class="cb-set__title">Payments</h3>
+            <div class="cb-pay-table-wrap">
+              <table class="cb-pay-table">
+                <thead><tr><th>Date</th><th>Plan</th><th>Amount</th><th>Status</th></tr></thead>
+                <tbody id="set-payments"><tr><td colspan="4" class="cb-set__muted">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   </div>
@@ -698,16 +742,17 @@
 
   <script src="popover.js?v=2"></script>
   <script src="magenta.js?v=1"></script>
-  <script src="app.js?v=32"></script>
+  <script src="app.js?v=33"></script>
   <script src="history.js?v=8"></script>
   <script src="notif-view.js?v=5"></script>
   <script src="banner.js"></script>
-  <script src="tracks.js?v=3"></script>
+  <script src="tracks.js?v=4"></script>
   <script src="theme.js"></script>
   <script src="appearance.js"></script>
   <script src="menu.js?v=9"></script>
   <script src="account.js?v=2"></script>
-  <script src="settings.js?v=6"></script>
+  <script src="settings.js?v=7"></script>
+  <script src="billing-ui.js?v=1"></script>
   <script src="logout.js?v=2"></script>
   <script src="tour.js?v=10"></script>
   <script src="resize.js?v=4"></script>

@@ -36,3 +36,7 @@ archive*.zip
 
 .vercel
 .env*
+
+# Accuracy test set and results (kept on this computer only)
+bugbeat-accuracy-test/
+bugbeat-accuracy-test.zip

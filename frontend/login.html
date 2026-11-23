@@ -94,7 +94,7 @@
         next = sessionStorage.getItem('cb_after_login');
         sessionStorage.removeItem('cb_after_login');
       } catch (e) {}
-      return next === 'admin-invite.html' ? next : 'index.html';
+      return ['admin-invite.html', 'plans.html'].includes(next) ? next : 'index.html';
     }
 
     const GOOGLE_CLIENT_ID = '808651930530-j1sriogp05ejiheq8bq2hjgohf0l4em2.apps.googleusercontent.com';

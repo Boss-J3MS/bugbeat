@@ -2379,3 +2379,51 @@ body.cb-resizing--both, body.cb-resizing--both * { cursor: move !important; }
 .cb-device__meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
 .cb-device__out { flex-shrink: 0; }
 .cb-device__out:hover:not(:disabled) { color: var(--critical); border-color: var(--critical); }
+
+/* ═══════════════════════════════════════════════
+   Plans (billing-ui.js)
+═══════════════════════════════════════════════ */
+/* "See plans" next to the daily-limit message. */
+.cb-error-banner__action {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--status-error-text);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.cb-error-banner__action[hidden] { display: none; }
+
+/* Free plan: the locked defect-risk score. */
+.cb-ml--locked { font-size: 0.72rem; color: var(--text-muted); }
+.cb-ml--locked a { color: var(--accent); font-weight: 600; }
+.cb-ml--locked[hidden] { display: none; }
+
+/* Sidebar: the plan and the Upgrade button. */
+.cb-plan-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: 0.15rem 0 0.5rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+}
+.cb-plan-badge[hidden] { display: none; }
+.cb-plan-badge__text { font-size: 0.72rem; color: var(--text-muted); line-height: 1.35; }
+.cb-plan-badge__btn { height: 26px; padding: 0 0.6rem; text-decoration: none; flex-shrink: 0; }
+.cb-plan-badge__btn[hidden] { display: none; }
+
+/* Settings → Plan: payment history. */
+.cb-pay-table-wrap { overflow-x: auto; }
+.cb-pay-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+.cb-pay-table th,
+.cb-pay-table td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid var(--border); }
+.cb-pay-table th { color: var(--text-muted); font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
+.cb-pay-status { font-weight: 600; }
+.cb-pay-status--paid    { color: var(--clean); }
+.cb-pay-status--pending { color: var(--text-muted); }
+.cb-pay-status--failed  { color: var(--critical); }
+a.cb-btn { text-decoration: none; }
+a.cb-btn[hidden] { display: none; }

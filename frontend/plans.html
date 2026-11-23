@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BugBeat — Plans</title>
+  <meta name="description" content="BugBeat Free and Student Pro plans." />
+  <link rel="icon" type="image/png" href="bugbeatLogo.png" />
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('cb-theme') || 'dark';
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (e) {}
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css?v=37" />
+  <link rel="stylesheet" href="plans.css?v=1" />
+</head>
+<body class="pl-page">
+
+  <header class="pl-top">
+    <a href="landing.html" class="pl-brand" id="pl-home">
+      <img src="bugbeatMark.png" alt="" width="28" height="28" />
+      <span>BugBeat</span>
+    </a>
+    <nav class="pl-top__actions">
+      <button id="theme-toggle" class="cb-btn cb-btn--ghost" title="Toggle light/dark mode" aria-label="Toggle light/dark mode">🌙</button>
+      <a id="pl-back" href="landing.html" class="cb-btn cb-btn--ghost">← Back</a>
+    </nav>
+  </header>
+
+  <main class="pl-main">
+    <h1 class="pl-title">Plans</h1>
+    <p class="pl-lead">Free covers everyday practice. Student Pro removes the limits and adds the more accurate analysis and the defect-risk score.</p>
+
+    <div id="pl-test" class="pl-test" hidden>
+      <strong>Test mode:</strong> payments are simulated and no real money is charged.
+      Use the test card <code>4343 4343 4343 4345</code> with any future expiry date and any 3-digit CVC.
+      <code>4111 1111 1111 1111</code> is declined.
+    </div>
+
+    <div id="pl-current" class="pl-current" role="status" hidden></div>
+
+    <div class="pl-grid">
+      <!-- Free -->
+      <section class="pl-card" aria-labelledby="pl-free-name">
+        <h2 id="pl-free-name" class="pl-card__name">Free</h2>
+        <div class="pl-card__price"><span class="pl-amount">₱0</span></div>
+        <ul id="pl-free-list" class="pl-list"></ul>
+        <div class="pl-card__foot"><span id="pl-free-note" class="pl-note">Your plan when you sign up.</span></div>
+      </section>
+
+      <!-- Student Pro -->
+      <section class="pl-card pl-card--pro" aria-labelledby="pl-pro-name">
+        <h2 id="pl-pro-name" class="pl-card__name">Student Pro</h2>
+        <div class="pl-card__price"><span id="pl-pro-amount" class="pl-amount">₱99</span> <span id="pl-pro-per" class="pl-per">for 30 days</span></div>
+        <ul id="pl-pro-list" class="pl-list"></ul>
+
+        <div id="pl-buy" class="pl-buy" hidden>
+          <div id="pl-billing" class="pl-seg" role="radiogroup" aria-label="How to pay">
+            <button type="button" class="pl-seg__btn is-active" data-billing="prepaid" role="radio" aria-checked="true">Pay once</button>
+            <button type="button" class="pl-seg__btn" data-billing="auto_renew" role="radio" aria-checked="false">Auto-renew</button>
+          </div>
+          <div id="pl-options" class="pl-options" role="radiogroup" aria-label="Length"></div>
+          <p id="pl-billing-help" class="pl-note"></p>
+
+          <!-- Auto-renew: the card is sent straight to PayMongo, never to BugBeat's server. -->
+          <form id="pl-card-form" class="pl-cardform" novalidate hidden>
+            <label class="pl-field pl-field--wide">
+              <span>Card number</span>
+              <input id="pl-cc-number" inputmode="numeric" autocomplete="cc-number" placeholder="4343 4343 4343 4345" maxlength="23" />
+            </label>
+            <label class="pl-field">
+              <span>Expiry (MM/YY)</span>
+              <input id="pl-cc-exp" inputmode="numeric" autocomplete="cc-exp" placeholder="12/28" maxlength="5" />
+            </label>
+            <label class="pl-field">
+              <span>CVC</span>
+              <input id="pl-cc-cvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4" />
+            </label>
+            <label class="pl-field pl-field--wide">
+              <span>Name on card</span>
+              <input id="pl-cc-name" autocomplete="cc-name" placeholder="Juan Dela Cruz" maxlength="80" />
+            </label>
+          </form>
+
+          <button type="button" id="pl-pay" class="cb-btn cb-btn--primary pl-pay">Continue to payment</button>
+          <div id="pl-msg" class="pl-msg" role="alert" hidden></div>
+        </div>
+        <div id="pl-pro-foot" class="pl-card__foot"></div>
+      </section>
+    </div>
+
+    <p class="pl-small">Payments are handled by PayMongo. BugBeat never sees or stores your card number.
+      Auto-renew can be turned off any time in Settings → Plan; Student Pro then stays on until the end of the period you paid for.</p>
+  </main>
+
+  <script src="theme.js"></script>
+  <script src="plans.js?v=1"></script>
+</body>
+</html>

@@ -586,3 +586,26 @@
   /* Five cards in two columns: the last one takes the whole row. */
   .admin-stat-card--link { grid-column: 1 / -1; }
 }
+
+/* ── Payments tab (Student Pro) ───────────────── */
+.admin-pay-mode {
+  margin-left: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+  background: var(--warning-bg);
+}
+.admin-pay-mode[hidden] { display: none; }
+.admin-pay-stats { grid-template-columns: repeat(2, minmax(0, 220px)); }
+.admin-subtitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 1.5rem 0 0.6rem;
+}
+.admin-sub-line { font-size: 0.7rem; color: var(--text-muted); }
+.admin-grant-form .admin-grant-days { flex: 0 0 90px; }

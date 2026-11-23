@@ -59,8 +59,9 @@
     if (typeof showNotice !== 'function') return;
     showNotice({
       title: 'My tracks is full',
-      message: `You already have ${limits.max_files} saved tracks. "${name}" is playing now, but it wasn't saved. ` +
-               'To save it, delete one of your saved tracks in My tracks, then upload it again.',
+      message: `Your plan keeps ${limits.max_files} saved track${limits.max_files === 1 ? '' : 's'}. "${name}" is playing now, but it wasn't saved. ` +
+               'To save it, delete a saved track in My tracks, then upload it again.' +
+               (limits.max_files < 5 ? ' Student Pro keeps up to 5.' : ''),
       actionLabel: 'Open My tracks',
       onAction: openMyTracks
     });

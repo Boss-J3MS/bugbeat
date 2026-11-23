@@ -360,6 +360,7 @@ const ISSUES_EMPTY_HTML    = issueList?.innerHTML || '';
 const SEQUENCER_EMPTY_HTML = sequencer?.innerHTML || '';
 const mlComplexityEl = document.getElementById('ml-complexity');
 const mlUnavailableEl= document.getElementById('ml-complexity-unavailable');
+const mlLockedEl     = document.getElementById('ml-complexity-locked');
 const mlRiskBadge    = document.getElementById('ml-risk-badge');
 const mlScore        = document.getElementById('ml-score');
 const mlLang         = document.getElementById('ml-lang');
@@ -466,6 +467,11 @@ let lastRisk      = null;   // risk level of the latest analysis
 // ── Audio file state ───────────────────────────
 let audioContext   = null;
 let audioBuffer    = null;
+// Tempo of the uploaded track (detectTempo), and the speed change from the
+// error effects. The BPM slider then sets the track's speed: slider BPM ÷
+// trackBpm (so at the track's own tempo it plays at normal speed).
+let trackBpm       = null;
+let audioFxRate    = 1;
 let audioSource    = null;
 let audioGain      = null;
 let audioDistNode  = null;
@@ -642,7 +648,15 @@ async function useAudioTrack(arrayBuffer, name) {
     currentTrackName = name;
     audioLabel.textContent = `🎵 ${name}`;
     audioRemoveBtn.hidden  = false;
-    setMusicStatus(`✅ "${name}" loaded — replaces the synthesized music, with error effects applied directly to it`, 'ok');
+    // The slider starts at the track's own tempo (normal speed).
+    const detected = detectTempo(decoded);
+    trackBpm = Math.min(200, Math.max(60, detected || parseInt(bpmRange.value, 10)));
+    bpmRange.value = trackBpm;
+    bpmVal.textContent = trackBpm;
+    updateBpmFill();
+    if (audioSource) audioSource.playbackRate.value = audioFxRate * trackSpeed();
+    setMusicStatus(`✅ "${name}" loaded${detected ? ` (about ${detected} BPM)` : ''} — replaces the synthesized music; ` +
+                   'the BPM slider changes its speed', 'ok');
     updateNowPlaying();
     return true;
   } catch(err) {
@@ -709,7 +723,13 @@ if (audioUpload) {
 
 if (audioRemoveBtn) {
   audioRemoveBtn.addEventListener('click', () => {
-    uploadedFile = null; audioBuffer = null; currentTrackName = null;
+    uploadedFile = null; audioBuffer = null; currentTrackName = null; trackBpm = null;
+    // Back to the music style's tempo.
+    if (currentStyle) {
+      bpmRange.value = currentStyle.bpm;
+      bpmVal.textContent = currentStyle.bpm;
+      updateBpmFill();
+    }
     audioUpload.value = '';
     audioLabel.textContent = 'Upload audio';
     audioRemoveBtn.hidden  = true;
@@ -718,6 +738,58 @@ if (audioRemoveBtn) {
     if (window.markActiveTrack) markActiveTrack(null);
     updateNowPlaying();
   });
+}
+
+// Estimates an audio buffer's tempo in BPM (60–200), or null.
+function detectTempo(buffer) {
+  const sr = buffer.sampleRate, chans = buffer.numberOfChannels;
+  const len = Math.min(buffer.length, Math.floor(sr * 60));   // first minute is enough
+  const hop = 256, frames = Math.floor(len / hop), fps = sr / hop;
+  if (frames < fps * 6) return null;                           // under ~6 s: too short to tell
+  const data = Array.from({ length: chans }, (_, c) => buffer.getChannelData(c));
+  // Loudness per frame, then how much it jumps up (where beats start).
+  const env = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) {
+    let s = 0;
+    for (let i = f * hop, end = i + hop; i < end; i++) {
+      let v = 0;
+      for (let c = 0; c < chans; c++) v += data[c][i];
+      s += v * v;
+    }
+    env[f] = Math.log1p(100 * Math.sqrt(s / hop));
+  }
+  const onset = new Float32Array(frames);
+  let mean = 0;
+  for (let f = 1; f < frames; f++) { onset[f] = Math.max(0, env[f] - env[f - 1]); mean += onset[f]; }
+  mean /= frames;
+  for (let f = 0; f < frames; f++) onset[f] -= mean;
+  // The beat spacing is the lag where the onsets line up best with themselves.
+  const minLag = Math.floor(fps * 60 / 200), maxLag = Math.ceil(fps * 60 / 60);
+  const corr = new Float32Array(maxLag + 2);
+  for (let lag = minLag - 1; lag <= maxLag + 1; lag++) {
+    let s = 0;
+    for (let f = lag; f < frames; f++) s += onset[f] * onset[f - lag];
+    corr[lag] = s;
+  }
+  let best = -Infinity, bestLag = 0;
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    const bpm = 60 * fps / lag;
+    const w = Math.exp(-0.5 * Math.log2(bpm / 120) ** 2);      // prefer the usual tempo range
+    if (corr[lag] * w > best) { best = corr[lag] * w; bestLag = lag; }
+  }
+  if (!bestLag || corr[bestLag] <= 0) return null;
+  // A strong match at half the spacing means the real beat is twice as fast.
+  const half = Math.round(bestLag / 2);
+  if (half >= minLag && corr[half] >= 0.7 * corr[bestLag]) bestLag = half;
+  const a = corr[bestLag - 1], b = corr[bestLag], c = corr[bestLag + 1];
+  const shift = (a - 2 * b + c) ? 0.5 * (a - c) / (a - 2 * b + c) : 0;
+  return Math.round(60 * fps / (bestLag + Math.max(-0.5, Math.min(0.5, shift))));
+}
+
+// Speed of the uploaded track set by the BPM slider (0.5× to 2×).
+function trackSpeed() {
+  if (!audioBuffer || !trackBpm) return 1;
+  return Math.min(2, Math.max(0.5, parseInt(bpmRange.value, 10) / trackBpm));
 }
 
 function playAudioFile(offset = 0) {
@@ -732,7 +804,8 @@ function playAudioFile(offset = 0) {
   audioSource              = audioContext.createBufferSource();
   audioSource.buffer       = audioBuffer;
   audioSource.loop         = true;
-  audioSource.playbackRate.value = 1.0;
+  audioFxRate              = 1;
+  audioSource.playbackRate.value = trackSpeed();
   audioSource.connect(audioDistNode);
   audioDistNode.connect(audioGain);
   // Level meters before and after the distortion (startAudioLeveler).
@@ -762,14 +835,16 @@ function applyAudioFx(severity) {
   const level = errorSoundLevel();
   const curve = makeDistortionCurve(fx.distortion * level.amount * 400);
   audioDistNode.curve = curve;
-  audioSource.playbackRate.value = fx.rateMult;
+  audioFxRate = fx.rateMult;
+  audioSource.playbackRate.value = audioFxRate * trackSpeed();
   // The volume is evened out by startAudioLeveler.
 }
 
 function resetAudioFx() {
   if (!audioSource || !audioDistNode) return;
   audioDistNode.curve = makeDistortionCurve(0);
-  audioSource.playbackRate.value = 1.0;
+  audioFxRate = 1;
+  audioSource.playbackRate.value = trackSpeed();
 }
 
 function makeDistortionCurve(amount) {
@@ -894,9 +969,12 @@ function applyMusicStyle(key, { announce = true, remember = false } = {}) {
   const preset = STYLE_PRESETS[key] || STYLE_PRESETS.lofi;
   currentStyle = preset;
   magentaGroove = null;
-  bpmRange.value = preset.bpm;
-  bpmVal.textContent = preset.bpm;
-  updateBpmFill();
+  // With an uploaded track, the slider stays on the track's speed.
+  if (!audioBuffer) {
+    bpmRange.value = preset.bpm;
+    bpmVal.textContent = preset.bpm;
+    updateBpmFill();
+  }
 
   const wasPlaying = isPlaying;
   if (wasPlaying) stopPlayback();
@@ -1406,7 +1484,12 @@ stopBtn.addEventListener('click', () => { stopPlayback(); playIndex = 0; });
 bpmRange.addEventListener('input', () => {
   bpmVal.textContent = bpmRange.value;
   updateBpmFill();
-  if (isPlaying) Tone.getTransport().bpm.value = parseInt(bpmRange.value);
+  if (isPlaying && playMode === 'track' && audioSource) {
+    updatePositionDisplay();            // count the time played at the old speed
+    audioSource.playbackRate.value = audioFxRate * trackSpeed();
+  } else if (isPlaying) {
+    Tone.getTransport().bpm.value = parseInt(bpmRange.value);
+  }
 });
 bpmRange.addEventListener('change', () => saveMusicPreference());
 
@@ -1469,7 +1552,9 @@ analyzeBtn.addEventListener('click', async () => {
     // ✅ Save analysis session to history
     await saveAnalysisToHistory(code, savedLang, lines);
   } catch (err) {
-    showError(err.message || 'Analysis failed. Try again.');
+    // The daily limit message comes with a link to the plans.
+    showError(err.message || 'Analysis failed. Try again.', { plans: !!err.limitReached });
+    if (err.limitReached && window.refreshPlan) window.refreshPlan();
   } finally {
     analyzeBtn.disabled = false;
     analyzeBtn.innerHTML = '<span class="cb-btn__icon">▶</span> Analyze';
@@ -1482,16 +1567,22 @@ analyzeBtn.addEventListener('click', async () => {
 async function analyzeWithBackend(code, lang) {
   let res;
   try {
+    // With the login, the daily limit counts per account (and Student Pro
+    // gets the advanced analysis); without it, per IP address.
     res = await fetch(`${BACKEND_URL}/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: cbToken ? authHeaders() : { 'Content-Type': 'application/json' },
       body: JSON.stringify({ code, lang })
     });
   } catch(e) {
     throw new Error('Cannot reach the server. Is the backend running?');
   }
   const data = await res.json();
-  if (!res.ok) throw new Error(data?.error || `Server error (HTTP ${res.status})`);
+  if (!res.ok) {
+    const err = new Error(data?.error || `Server error (HTTP ${res.status})`);
+    err.limitReached = !!data?.limit_reached;
+    throw err;
+  }
   const lines = data?.lines;
   if (!Array.isArray(lines) || !lines.length) throw new Error('Server returned no data. Try again.');
   return { lines, language: data.language || lang };
@@ -1621,8 +1712,8 @@ if (outputMinBtn) outputMinBtn.addEventListener('click', () =>
 // throws) so a slow or offline ML service can't break the main
 // Gemini-based Analyze flow it runs alongside.
 async function fetchComplexity(code, lang) {
-  const viaBackend = await postComplexity(`${BACKEND_URL}/complexity`, code, lang);
-  if (viaBackend) return viaBackend;
+  const viaBackend = await postComplexity(`${BACKEND_URL}/complexity`, code, lang, true);
+  if (viaBackend) return viaBackend;          // the score, or { locked: true } on Free
   // Local route for checking: when the hosted backend can't reach an ML
   // service, ask one running on this computer (python main.py, port 5000).
   // On localhost the backend above already points there, so skip it.
@@ -1632,14 +1723,16 @@ async function fetchComplexity(code, lang) {
 
 const LOCAL_ML_URL = 'http://localhost:5000';
 
-async function postComplexity(url, code, lang) {
+async function postComplexity(url, code, lang, withLogin = false) {
   try {
     const res = await fetch(url, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withLogin && cbToken ? authHeaders() : { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ code, lang })
     });
     const data = await res.json();
+    // The defect-risk score is a Student Pro feature.
+    if (res.status === 403 && data?.locked) return { locked: true };
     if (!res.ok) {
       console.warn('ML complexity unavailable at', url, data?.error || data?.detail || res.status);
       return null;
@@ -1653,6 +1746,12 @@ async function postComplexity(url, code, lang) {
 
 function renderMlComplexity(result) {
   if (!mlComplexityEl || !mlUnavailableEl) return;
+  if (mlLockedEl) mlLockedEl.hidden = !result?.locked;
+  if (result?.locked) {
+    mlComplexityEl.hidden  = true;
+    mlUnavailableEl.hidden = true;
+    return;
+  }
   if (!result) {
     mlComplexityEl.hidden  = true;
     mlUnavailableEl.hidden = false;
@@ -2007,6 +2106,7 @@ if (clearBtn) {
     hideError();
     if (mlComplexityEl)  mlComplexityEl.hidden  = true;
     if (mlUnavailableEl) mlUnavailableEl.hidden = true;
+    if (mlLockedEl)      mlLockedEl.hidden      = true;
     clearResults();
   });
 }
@@ -2056,13 +2156,17 @@ langSelect.addEventListener('change', () => {
   }
 });
 
-function showError(msg) {
+function showError(msg, { plans = false } = {}) {
   errorBannerMsg.textContent = msg;
+  const action = document.getElementById('error-banner-action');
+  if (action) action.hidden = !plans;
   errorBanner.hidden = false;
 }
 function hideError() {
   errorBanner.hidden = true;
   errorBannerMsg.textContent = '';
+  const action = document.getElementById('error-banner-action');
+  if (action) action.hidden = true;
 }
 
 // ── Rhythm panel: waveform ─────────────────────
@@ -2490,4 +2594,4 @@ require(['vs/editor/editor.main'], function () {
 
   // Ready!
   updateAnalyzeBtn();
-});
+});

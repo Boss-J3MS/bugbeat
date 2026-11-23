@@ -39,6 +39,7 @@ import dns          from 'dns';
 import db       from './db.js';
 import { storageEnabled, putObject, getObject, deleteObjects, detectAudio } from './storage.js';
 import { hashPassword, verifyPassword, generateToken, requireAuth, requireAdmin, validatePasswordStrength } from './auth.js';
+import { registerBillingRoutes, planFor, optionalUser, checkAnalysisLimit, countAnalysis } from './billing.js';
 
 dotenv.config();
 
@@ -78,7 +79,9 @@ app.use(helmet());
 // The app deals with source code snippets and JSON payloads, not large file
 // uploads (audio uploads currently only send metadata) — 50mb was far more
 // than anything legitimate needs and made a body-size DoS trivially cheap.
-app.use(express.json({ limit: '2mb' }));
+// The raw body is kept too: PayMongo's webhook signature is computed over
+// the exact bytes received (billing.js).
+app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 // Every limiter counts per visitor. By default express-rate-limit uses
 // req.ip, which on Render is the address of one of Render's own proxies,
@@ -211,6 +214,16 @@ app.post('/complexity', async (req, res) => {
   if (!code || !code.trim()) {
     return res.status(400).json({ error: 'Missing or empty "code" field.' });
   }
+  // The defect-risk score is a Student Pro feature (admins have it too).
+  try {
+    const { plan } = await planFor(await optionalUser(req));
+    if (!plan.risk_score) {
+      return res.status(403).json({ error: 'The defect-risk score is part of Student Pro.', locked: true });
+    }
+  } catch (err) {
+    console.error('/complexity plan check failed:', err.message);
+    return res.status(500).json({ error: 'Could not check your plan.' });
+  }
   try {
     const mlRes = await fetch(`${ML_SERVICE_URL}/complexity`, {
       method: 'POST',
@@ -237,6 +250,24 @@ app.post('/analyze', async (req, res) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey && !ANTHROPIC_API_KEY) {
     return res.status(500).json({ error: 'Server misconfiguration: API key missing.' });
+  }
+
+  // Daily limit: per account when logged in, per IP address when not.
+  const user = await optionalUser(req);
+  const ip   = clientIp(req);
+  let quota;
+  try {
+    quota = await checkAnalysisLimit(user, ip);
+  } catch (err) {
+    console.error('/analyze limit check failed:', err.message);
+    return res.status(500).json({ error: 'Could not check your daily limit. Please try again.' });
+  }
+  if (!quota.allowed) {
+    return res.status(429).json({
+      error: `You've used today's ${quota.limit} analyses. They reset at midnight` +
+             (quota.plan.code === 'free' ? (user ? ', or upgrade to Student Pro for more.' : '. Log in or upgrade to Student Pro for more.') : '.'),
+      limit_reached: true, plan: quota.plan.code, used: quota.used, limit: quota.limit
+    });
   }
 
   // The language picked in the app. Anything other than one of these is
@@ -304,8 +335,9 @@ ${langLabel}Code:
 ${code}
 \`\`\``;
 
-  // Gemini first; if it fails or replies with something unusable, the same
-  // prompt goes to Claude. "engine" in the reply says which one answered.
+  // Free: Gemini first, Claude if it fails. Student Pro and admins: Claude
+  // (the advanced analysis) first, Gemini if it fails. "engine" in the
+  // reply says which one answered.
   const askEngine = async (engine) => {
     const text   = engine === 'gemini' ? await callGemini(apiKey, prompt, 0.1)
                                        : await callClaude(prompt);
@@ -318,22 +350,19 @@ ${code}
 
   try {
     let parsed, engine;
-    try {
-      if (!apiKey) throw new Error('GEMINI_API_KEY not set');
-      parsed = await askEngine('gemini');
-      engine = 'gemini';
-    } catch (geminiErr) {
-      if (!ANTHROPIC_API_KEY) throw geminiErr;
-      console.warn(`[analyze] Gemini failed: ${geminiErr.message} — trying Claude`);
+    const order = quota.plan.advanced_analysis ? ['claude', 'gemini'] : ['gemini', 'claude'];
+    for (const name of order.filter(n => (n === 'gemini' ? apiKey : ANTHROPIC_API_KEY))) {
       try {
-        parsed = await askEngine('claude');
-        engine = 'claude';
-      } catch (claudeErr) {
-        console.error('[analyze] Claude also failed:', claudeErr.message);
-        throw new Error('Code analysis is unavailable right now. Please try again in a moment.');
+        parsed = await askEngine(name);
+        engine = name;
+        break;
+      } catch (err) {
+        console.warn(`[analyze] ${name} failed: ${err.message}`);
       }
     }
-    console.log(`[analyze] answered by ${engine}`);
+    if (!parsed) throw new Error('Code analysis is unavailable right now. Please try again in a moment.');
+    console.log(`[analyze] answered by ${engine} (${quota.plan.code})`);
+    countAnalysis(user, ip);
     const lines = parsed.lines;
     const valid = new Set(['clean','warning','error','critical']);
     const text_ = (v, max) => (typeof v === 'string' ? v : '').slice(0, max);
@@ -1663,6 +1692,9 @@ app.post('/history/save', requireAuth, async (req, res) => {
 // ── GET /history ───────────────────────────────
 app.get('/history', requireAuth, async (req, res) => {
   try {
+    // Free shows the latest 20 sessions; Student Pro all of them.
+    const { plan } = await planFor(req.user);
+    const historyLimit = plan.history_limit ?? 500;
     const [rows] = await db.query(
       `SELECT id, language, total_lines, issues_found,
               clean_count, warning_count, error_count, critical_count,
@@ -1670,10 +1702,10 @@ app.get('/history', requireAuth, async (req, res) => {
        FROM analyses
        WHERE user_id = ?
        ORDER BY created_at DESC
-       LIMIT 50`,
-      [req.user.userId]
+       LIMIT ?`,
+      [req.user.userId, historyLimit]
     );
-    res.json({ history: rows });
+    res.json({ history: rows, limit: plan.history_limit });
   } catch (err) {
     console.error('/history error:', err.message);
     res.status(500).json({ error: 'Could not fetch history.' });
@@ -1835,7 +1867,9 @@ function trackJson(row) {
 
 // ── GET /audio ─────────────────────────────────
 app.get('/audio', requireAuth, async (req, res) => {
-  const limits = { enabled: storageEnabled, max_files: AUDIO_MAX_FILES, max_bytes: AUDIO_MAX_BYTES };
+  let maxFiles = AUDIO_MAX_FILES;
+  try { maxFiles = Math.min(AUDIO_MAX_FILES, (await planFor(req.user)).plan.track_limit); } catch {}
+  const limits = { enabled: storageEnabled, max_files: maxFiles, max_bytes: AUDIO_MAX_BYTES };
   if (!storageEnabled) return res.json({ ...limits, tracks: [] });
   try {
     const [rows] = await db.query(
@@ -1878,8 +1912,12 @@ app.post('/audio',
         'SELECT COUNT(*) AS count FROM audio_uploads WHERE user_id = ? AND storage_key IS NOT NULL',
         [req.user.userId]
       );
-      if (count >= AUDIO_MAX_FILES) {
-        return res.status(409).json({ error: `You already have ${AUDIO_MAX_FILES} saved tracks. Delete one to save a new one.`, limit: true });
+      // Free keeps 1 saved track, Student Pro 5.
+      const { plan } = await planFor(req.user);
+      const maxFiles = Math.min(AUDIO_MAX_FILES, plan.track_limit);
+      if (count >= maxFiles) {
+        const more = plan.code === 'free' ? ' Student Pro keeps up to 5.' : '';
+        return res.status(409).json({ error: `You already have ${count} saved track${count === 1 ? '' : 's'} (your plan keeps ${maxFiles}). Delete one to save a new one.${more}`, limit: true });
       }
 
       const key = `audio/${req.user.userId}/${crypto.randomUUID()}${format.ext}`;
@@ -2104,7 +2142,10 @@ const PAIZA_LANGUAGE_IDS = {
 const executeLimiter = rateLimit({
   keyGenerator: visitorKey,
   windowMs: 15 * 60 * 1000,
-  limit: 15,
+  // 15 runs per 15 minutes on Free, 40 on Student Pro (runs after requireAuth).
+  limit: async (req) => {
+    try { return (await planFor(req.user)).plan.runs_per_15min; } catch { return 15; }
+  },
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many run requests. Please wait a while before trying again.' },
@@ -2924,6 +2965,9 @@ function round(val, decimals) {
 }
 
 // ── Start ──────────────────────────────────────
+// ── Plans and payments (billing.js) ────────────
+registerBillingRoutes(app, { clientIp, errorRef });
+
 app.listen(PORT, () => {
   console.log(`BugBeat server running on port ${PORT}`);
-});
+});

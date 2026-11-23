@@ -7,6 +7,7 @@
 //                   by appearance.js) and the default code language.
 //    • Security:    Change password (opens account.js's window on top),
 //                   signed-in devices (log out one, or all others), delete account.
+//    • Plan:        filled by billing-ui.js (plan, usage, auto-renew, payments).
 //  Also shows the nickname (or the username) in the sidebar greeting.
 //  Uses BACKEND_URL, cbToken and cbUser from app.js.
 // ═══════════════════════════════════════════════
@@ -123,6 +124,7 @@
       $('set-pane-' + t.dataset.pane).hidden = !on;
     });
     if (tab.dataset.pane === 'security' && typeof loadDevices === 'function') loadDevices();
+    if (tab.dataset.pane === 'plan' && window.loadPlanPane) window.loadPlanPane();
     if (focus) tab.focus();
   }
   tabs.forEach((t, i) => {
