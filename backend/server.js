@@ -79,8 +79,8 @@ app.use(helmet());
 // The app deals with source code snippets and JSON payloads, not large file
 // uploads (audio uploads currently only send metadata) — 50mb was far more
 // than anything legitimate needs and made a body-size DoS trivially cheap.
-// The raw body is kept too: PayMongo's webhook signature is computed over
-// the exact bytes received (billing.js).
+// The raw body is kept too (billing.js uses it to recognise a webhook
+// delivery that arrives twice).
 app.use(express.json({ limit: '2mb', verify: (req, res, buf) => { req.rawBody = buf; } }));
 
 // Every limiter counts per visitor. By default express-rate-limit uses
@@ -403,7 +403,9 @@ ${code}
 //   2. POST /auth/signup/verify  checks the code, then creates the account
 // Pending sign-ups live in email_verifications (not users) until verified.
 const SIGNUP_CODE_MINUTES      = 10;
-const SIGNUP_CODE_MAX_ATTEMPTS = 5;
+const SIGNUP_CODE_MAX_ATTEMPTS = 5;    // wrong codes per sign-up (a new code doesn't reset it)
+const SIGNUP_MAX_SENDS         = 5;    // codes emailed per sign-up (the first one included)
+const SIGNUP_LOCK_MINUTES      = 15;   // verification is turned off this long after too many attempts
 const SIGNUP_RESEND_SECONDS    = 60;
 const USERNAME_PATTERN = /^[a-zA-Z0-9_.-]{3,20}$/;
 const EMAIL_PATTERN    = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -455,6 +457,27 @@ function makeSignupCode() {
 // The code is stored hashed (with the email mixed in), never as-is.
 function hashSignupCode(email, code) {
   return crypto.createHash('sha256').update(`${email.toLowerCase()}:${code}`).digest('hex');
+}
+
+// Too many wrong codes, or too many codes requested, turns verification off
+// for the email (locked_until): no checking codes, no new codes and no
+// starting the sign-up again with that email until the time is up.
+function signupLockedReply(res, secondsLeft) {
+  const left = Math.max(1, Number(secondsLeft) || SIGNUP_LOCK_MINUTES * 60);
+  const minutes = Math.ceil(left / 60);
+  return res.status(429).json({
+    error: `Too many attempts. Verification for this email is turned off for ${minutes} more ` +
+           `${minutes === 1 ? 'minute' : 'minutes'}. Please try again later.`,
+    locked: true,
+    retryAfter: left
+  });
+}
+
+async function lockSignup(id) {
+  await db.query(
+    'UPDATE email_verifications SET locked_until = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?',
+    [SIGNUP_LOCK_MINUTES, id]
+  );
 }
 
 // Stricter than authLimiter: every call sends an email.
@@ -514,14 +537,35 @@ app.post('/auth/signup', emailCodeLimiter, async (req, res) => {
       return res.status(400).json({ error: domainCheck.reason });
     }
 
-    // Starting again with the same email replaces the earlier pending sign-up.
+    // Starting again with the same email replaces the earlier pending sign-up,
+    // but keeps its counts (so filling in the form again is not a way around
+    // the limits) unless an earlier lock has already run out.
+    const [prior] = await db.query(
+      `SELECT id, attempts, send_count,
+              (locked_until IS NOT NULL AND locked_until > NOW()) AS locked,
+              (locked_until IS NOT NULL AND locked_until <= NOW()) AS lock_over,
+              TIMESTAMPDIFF(SECOND, NOW(), locked_until) AS lock_left
+         FROM email_verifications WHERE email = ? LIMIT 1`,
+      [email]
+    );
+    let attempts = 0, sends = 1;
+    if (prior.length > 0 && !prior[0].lock_over) {
+      if (prior[0].locked) return signupLockedReply(res, prior[0].lock_left);
+      attempts = prior[0].attempts;
+      sends    = prior[0].send_count + 1;
+      if (sends > SIGNUP_MAX_SENDS) {
+        await lockSignup(prior[0].id);
+        return signupLockedReply(res, SIGNUP_LOCK_MINUTES * 60);
+      }
+    }
+
     const code = makeSignupCode();
     const hash = await hashPassword(password);
     await db.query('DELETE FROM email_verifications WHERE email = ?', [email]);
     await db.query(
-      `INSERT INTO email_verifications (email, username, password_hash, code_hash, expires_at, last_sent_at)
-       VALUES (?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())`,
-      [email, username, hash, hashSignupCode(email, code), SIGNUP_CODE_MINUTES]
+      `INSERT INTO email_verifications (email, username, password_hash, code_hash, attempts, send_count, expires_at, last_sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? MINUTE), NOW())`,
+      [email, username, hash, hashSignupCode(email, code), attempts, sends, SIGNUP_CODE_MINUTES]
     );
 
     await sendSignupCodeEmail(email, username, code);
@@ -556,7 +600,9 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT id, email, username, password_hash, code_hash, attempts, (expires_at > NOW()) AS still_valid
+      `SELECT id, email, username, password_hash, code_hash, attempts, (expires_at > NOW()) AS still_valid,
+              (locked_until IS NOT NULL AND locked_until > NOW()) AS locked,
+              TIMESTAMPDIFF(SECOND, NOW(), locked_until) AS lock_left
          FROM email_verifications WHERE email = ? LIMIT 1`,
       [email]
     );
@@ -565,11 +611,13 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
     }
     const pending = rows[0];
 
+    if (pending.locked) return signupLockedReply(res, pending.lock_left);
+    if (pending.attempts >= SIGNUP_CODE_MAX_ATTEMPTS) {
+      // An earlier lock has run out: a new code starts the tries again.
+      return res.status(400).json({ error: 'Click "Resend code" to get a new code.', expired: true });
+    }
     if (!pending.still_valid) {
       return res.status(400).json({ error: 'This code has expired. Click "Resend code" to get a new one.', expired: true });
-    }
-    if (pending.attempts >= SIGNUP_CODE_MAX_ATTEMPTS) {
-      return res.status(400).json({ error: 'Too many wrong codes. Click "Resend code" to get a new one.', expired: true });
     }
 
     const given = Buffer.from(hashSignupCode(email, code), 'hex');
@@ -577,11 +625,13 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
     if (given.length !== saved.length || !crypto.timingSafeEqual(given, saved)) {
       await db.query('UPDATE email_verifications SET attempts = attempts + 1 WHERE id = ?', [pending.id]);
       const left = SIGNUP_CODE_MAX_ATTEMPTS - pending.attempts - 1;
+      if (left <= 0) {
+        await lockSignup(pending.id);
+        return signupLockedReply(res, SIGNUP_LOCK_MINUTES * 60);
+      }
       return res.status(400).json({
-        error: left > 0
-          ? `That code is incorrect. ${left} ${left === 1 ? 'try' : 'tries'} left.`
-          : 'That code is incorrect. Click "Resend code" to get a new one.',
-        expired: left <= 0
+        error: `That code is incorrect. ${left} ${left === 1 ? 'try' : 'tries'} left.`,
+        triesLeft: left
       });
     }
 
@@ -633,7 +683,9 @@ app.post('/auth/signup/verify', authLimiter, async (req, res) => {
 });
 
 // ── POST /auth/signup/resend ───────────────────
-// Emails a new code for a pending sign-up (at most once a minute).
+// Emails a new code for a pending sign-up (at most once a minute, and at
+// most SIGNUP_MAX_SENDS codes per sign-up). Wrong codes keep counting
+// across new codes. After a lock runs out, the counts start again.
 app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
   const email = String(req.body?.email || '').trim();
   if (!email) {
@@ -645,7 +697,10 @@ app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
 
   try {
     const [rows] = await db.query(
-      `SELECT id, username, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since_sent
+      `SELECT id, username, send_count, TIMESTAMPDIFF(SECOND, last_sent_at, NOW()) AS since_sent,
+              (locked_until IS NOT NULL AND locked_until > NOW()) AS locked,
+              (locked_until IS NOT NULL AND locked_until <= NOW()) AS lock_over,
+              TIMESTAMPDIFF(SECOND, NOW(), locked_until) AS lock_left
          FROM email_verifications WHERE email = ? LIMIT 1`,
       [email]
     );
@@ -653,21 +708,44 @@ app.post('/auth/signup/resend', emailCodeLimiter, async (req, res) => {
       return res.status(400).json({ error: 'No sign-up is waiting for this email. Please fill in the form again.' });
     }
     const pending = rows[0];
-    if (pending.since_sent < SIGNUP_RESEND_SECONDS) {
-      const wait = SIGNUP_RESEND_SECONDS - pending.since_sent;
-      return res.status(429).json({ error: `Please wait ${wait} seconds before requesting another code.`, retryAfter: wait });
+    if (pending.locked) return signupLockedReply(res, pending.lock_left);
+    if (!pending.lock_over) {
+      if (pending.send_count >= SIGNUP_MAX_SENDS) {
+        await lockSignup(pending.id);
+        return signupLockedReply(res, SIGNUP_LOCK_MINUTES * 60);
+      }
+      if (pending.since_sent < SIGNUP_RESEND_SECONDS) {
+        const wait = SIGNUP_RESEND_SECONDS - pending.since_sent;
+        return res.status(429).json({ error: `Please wait ${wait} seconds before requesting another code.`, retryAfter: wait });
+      }
     }
 
     const code = makeSignupCode();
-    await db.query(
-      `UPDATE email_verifications
-          SET code_hash = ?, attempts = 0, expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE), last_sent_at = NOW()
-        WHERE id = ?`,
-      [hashSignupCode(email, code), SIGNUP_CODE_MINUTES, pending.id]
-    );
+    if (pending.lock_over) {
+      await db.query(
+        `UPDATE email_verifications
+            SET code_hash = ?, attempts = 0, send_count = 1, locked_until = NULL,
+                expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE), last_sent_at = NOW()
+          WHERE id = ?`,
+        [hashSignupCode(email, code), SIGNUP_CODE_MINUTES, pending.id]
+      );
+    } else {
+      await db.query(
+        `UPDATE email_verifications
+            SET code_hash = ?, send_count = send_count + 1,
+                expires_at = DATE_ADD(NOW(), INTERVAL ? MINUTE), last_sent_at = NOW()
+          WHERE id = ?`,
+        [hashSignupCode(email, code), SIGNUP_CODE_MINUTES, pending.id]
+      );
+    }
     await sendSignupCodeEmail(email, pending.username, code);
 
-    res.json({ message: `We sent a new code to ${email}.` });
+    const sendsLeft = pending.lock_over ? SIGNUP_MAX_SENDS - 1 : SIGNUP_MAX_SENDS - pending.send_count - 1;
+    res.json({
+      message: `We sent a new code to ${email}.` +
+               (sendsLeft > 0 ? '' : ' This is the last code you can request for now.'),
+      sendsLeft
+    });
   } catch (err) {
     console.error('/auth/signup/resend error:', errorRef(err), err.message);
     res.status(500).json({ error: 'Could not send a new code. Please try again.', ref: errorRef(err) });

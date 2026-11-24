@@ -73,7 +73,7 @@
           <label for="verify-code">Verification code</label>
           <input type="text" id="verify-code" class="auth-code-input" inputmode="numeric"
                  autocomplete="one-time-code" maxlength="6" placeholder="••••••" spellcheck="false" />
-          <div class="auth-field__hint">Didn't get it? Check your spam folder. The code expires in 10 minutes.</div>
+          <div class="auth-field__hint">Didn't get it? Check your spam folder. The code expires in 10 minutes. After 5 wrong codes or 5 codes sent, verification is turned off for 15 minutes.</div>
         </div>
         <button id="verify-btn" type="button" class="auth-btn">Verify and create account</button>
         <div class="auth-verify__links">
@@ -176,6 +176,7 @@
     const resendBtn = document.getElementById('resend-btn');
     let pendingEmail = '';
     let resendTimer = null;
+    let lockTimer = null;
 
     function showError(text) { sucEl.hidden = true; errEl.textContent = text; errEl.hidden = false; }
     function showSuccess(text) { errEl.hidden = true; sucEl.textContent = text; sucEl.hidden = false; }
@@ -204,6 +205,37 @@
           resendBtn.textContent = 'Resend code';
         } else {
           resendBtn.textContent = `Resend code (${left}s)`;
+        }
+      }, 1000);
+    }
+
+    // Too many attempts: the server turned verification off for a while.
+    // Everything on the code step stays disabled until the time is up; then
+    // only "Resend code" comes back (a new code starts the tries again).
+    function setLocked(seconds) {
+      clearInterval(resendTimer);
+      clearInterval(lockTimer);
+      let left = Math.max(1, Math.round(seconds || 900));
+      codeEl.disabled = true;
+      verifyBtn.disabled = true;
+      resendBtn.disabled = true;
+      const show = () => {
+        const m = Math.floor(left / 60), s = String(left % 60).padStart(2, '0');
+        resendBtn.textContent = `Try again in ${m}:${s}`;
+      };
+      show();
+      lockTimer = setInterval(() => {
+        left -= 1;
+        if (left <= 0) {
+          clearInterval(lockTimer);
+          lockTimer = null;
+          codeEl.disabled = false;
+          verifyBtn.disabled = false;
+          resendBtn.disabled = false;
+          resendBtn.textContent = 'Resend code';
+          showSuccess('You can request a new code now.');
+        } else {
+          show();
         }
       }, 1000);
     }
@@ -248,6 +280,9 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || 'Signup failed.');
+        clearInterval(lockTimer);
+        codeEl.disabled = false;
+        verifyBtn.disabled = false;
 
         if (data.token) return finishSignup(data); // backend without verification
         pendingEmail = data.email || email;
@@ -281,6 +316,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           showError(data.error || 'Could not verify the code.');
+          if (data.locked) { codeEl.value = ''; setLocked(data.retryAfter); return; }
           codeEl.select();
           if (data.expired && !resendBtn.disabled) resendBtn.focus();
           return;
@@ -290,7 +326,7 @@
       } catch (err) {
         showError(networkMessage(err));
       } finally {
-        verifyBtn.disabled = false;
+        verifyBtn.disabled = !!lockTimer;
         verifyBtn.textContent = 'Verify and create account';
       }
     }
@@ -299,7 +335,7 @@
     // Digits only; submit automatically once all 6 are in.
     codeEl.addEventListener('input', () => {
       codeEl.value = codeEl.value.replace(/\D/g, '').slice(0, 6);
-      if (codeEl.value.length === 6 && !verifyBtn.disabled) verifyCode();
+      if (codeEl.value.length === 6 && !verifyBtn.disabled && !lockTimer) verifyCode();
     });
 
     resendBtn.addEventListener('click', async () => {
@@ -314,6 +350,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           showError(data.error || 'Could not send a new code.');
+          if (data.locked) return setLocked(data.retryAfter);
           if (data.retryAfter) return startResendCountdown(data.retryAfter);
           resendBtn.disabled = false;
           return;
@@ -330,6 +367,10 @@
 
     document.getElementById('change-email-btn').addEventListener('click', () => {
       clearInterval(resendTimer);
+      clearInterval(lockTimer);
+      lockTimer = null;
+      codeEl.disabled = false;
+      verifyBtn.disabled = false;
       resendBtn.disabled = false;
       resendBtn.textContent = 'Resend code';
       clearMessages();
