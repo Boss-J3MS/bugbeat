@@ -28,8 +28,9 @@
   </header>
 
   <main class="pl-main">
-    <!-- PayMongo sends the student back here. Pro is turned on by PayMongo's
-         webhook, so this page only asks the server for the result. -->
+    <!-- Xendit sends the student back here. Only Xendit can confirm the
+         payment (its webhook, or the server asking Xendit), so this page
+         only asks the server for the result. -->
     <div class="pr-box" role="status" aria-live="polite">
       <div id="pr-icon" class="pr-icon" aria-hidden="true">⏳</div>
       <h1 id="pr-title" class="pr-title">Confirming your payment…</h1>
@@ -80,13 +81,17 @@
             show('✅', 'Student Pro is on', data.pro_until ? `Thank you! Student Pro is active until ${day(data.pro_until)}.` : 'Thank you! Student Pro is active.');
             return;
           }
+          if (res.ok && data.status === 'expired') {
+            show('↩', 'Payment not completed', 'The payment page expired or was closed before paying, so you were not charged. You can try again from the Plans page.');
+            return;
+          }
           if (res.ok && data.status === 'failed') {
             show('⚠', 'Payment failed', 'The payment did not go through and you were not charged. Please try again with another card or method.');
             return;
           }
         } catch (e) {}
         if (Date.now() - started > 90000) {
-          show('⏳', 'Still confirming', 'PayMongo has not confirmed the payment yet. Refresh this page in a minute; if you paid, Student Pro turns on as soon as the confirmation arrives.');
+          show('⏳', 'Still confirming', 'Xendit has not confirmed the payment yet. Refresh this page in a minute; if you paid, Student Pro turns on as soon as the confirmation arrives.');
           return;
         }
         setTimeout(check, 2500);

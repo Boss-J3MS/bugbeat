@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════
 //  plans.js — the Plans page (plans.html)
 //  Shows Free and Student Pro from GET /plans and lets a logged-in user buy
-//  Student Pro through PayMongo:
-//    • Pay once:   POST /billing/checkout → PayMongo's checkout page.
-//    • Auto-renew: the card goes straight to PayMongo (public key), then
-//                  POST /billing/subscribe → 3-D Secure page if needed.
-//  Either way the user comes back to payment-result.html.
+//  Student Pro on Xendit's payment page:
+//    • Pay once:   POST /billing/checkout  → Xendit's payment page.
+//    • Auto-renew: POST /billing/subscribe → Xendit's payment page, which
+//                  saves the payment method for the next charges.
+//  Either way Xendit sends the user back to payment-result.html.
 // ═══════════════════════════════════════════════
 (function () {
   const BACKEND_URL =
@@ -68,11 +68,10 @@
         ? (sel.duration_days >= 365 ? 'per year, renews automatically' : 'per month, renews automatically')
         : `for ${period(sel.duration_days)}`;
     }
-    $('pl-card-form').hidden = billing !== 'auto_renew';
     $('pl-billing-help').textContent = billing === 'auto_renew'
-      ? 'Your card is charged now and again every period until you turn auto-renew off. Cards only.'
-      : 'One payment, nothing charged later. Pay with a card, QR Ph (GCash, Maya and banking apps) or other methods PayMongo offers.';
-    $('pl-pay').textContent = billing === 'auto_renew' ? 'Start auto-renew' : 'Continue to payment';
+      ? 'You pay now, and the same payment method is charged again every period until you turn auto-renew off.'
+      : 'One payment, nothing charged later. Pay with a card, an e-wallet or other methods Xendit offers.';
+    $('pl-pay').textContent = billing === 'auto_renew' ? 'Continue to auto-renew' : 'Continue to payment';
     $('pl-pay').disabled = !sel;
   }
 
@@ -113,7 +112,7 @@
       foot.innerHTML = '<span class="pl-note">Admins already have every Student Pro feature.</span>';
       return;
     }
-    $('pl-billing').querySelector('[data-billing="auto_renew"]').hidden = !info.auto_renew_enabled || !info.public_key;
+    $('pl-billing').querySelector('[data-billing="auto_renew"]').hidden = !info.auto_renew_enabled;
     if (me?.auto_renew) $('pl-billing').querySelector('[data-billing="auto_renew"]').hidden = true;
     $('pl-buy').hidden = false;
     renderOptions();
@@ -163,19 +162,6 @@
     renderOptions();
   });
 
-  // A new attempt clears the last error.
-  $('pl-card-form').addEventListener('input', () => showMsg(''));
-
-  // Card number in groups of 4, expiry as MM/YY.
-  $('pl-cc-number').addEventListener('input', (e) => {
-    const d = e.target.value.replace(/\D/g, '').slice(0, 19);
-    e.target.value = d.replace(/(.{4})/g, '$1 ').trim();
-  });
-  $('pl-cc-exp').addEventListener('input', (e) => {
-    const d = e.target.value.replace(/\D/g, '').slice(0, 4);
-    e.target.value = d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
-  });
-
   async function api(path, body) {
     const res = await fetch(`${BACKEND_URL}${path}`, {
       method: 'POST',
@@ -187,30 +173,6 @@
     return data;
   }
 
-  // Sends the card to PayMongo with the public key; returns the payment method id.
-  async function createCardMethod() {
-    const number = $('pl-cc-number').value.replace(/\D/g, '');
-    const [mm, yy] = $('pl-cc-exp').value.split('/');
-    const cvc = $('pl-cc-cvc').value.replace(/\D/g, '');
-    const name = $('pl-cc-name').value.trim();
-    if (number.length < 13) throw new Error('Enter the card number.');
-    if (!(Number(mm) >= 1 && Number(mm) <= 12) || !/^\d{2}$/.test(yy || '')) throw new Error('Enter the expiry date as MM/YY.');
-    if (cvc.length < 3) throw new Error('Enter the 3- or 4-digit CVC.');
-    if (!name) throw new Error('Enter the name on the card.');
-    const res = await fetch('https://api.paymongo.com/v1/payment_methods', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: 'Basic ' + btoa(`${info.public_key}:`) },
-      body: JSON.stringify({ data: { attributes: {
-        type: 'card',
-        details: { card_number: number, exp_month: Number(mm), exp_year: 2000 + Number(yy), cvc },
-        billing: { name },
-      } } }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.errors?.map((x) => x.detail).join(' ') || 'PayMongo did not accept the card details.');
-    return data.data.id;
-  }
-
   $('pl-pay').addEventListener('click', async () => {
     const btn = $('pl-pay');
     showMsg('');
@@ -218,15 +180,9 @@
     const label = btn.textContent;
     btn.textContent = 'Please wait…';
     try {
-      if (billing === 'prepaid') {
-        const data = await api('/billing/checkout', { price_id: priceId });
-        location.href = data.checkout_url;           // PayMongo's checkout page
-        return;
-      }
-      const pm = await createCardMethod();
-      const data = await api('/billing/subscribe', { price_id: priceId, payment_method_id: pm });
-      if (data.redirect_url) { location.href = data.redirect_url; return; }   // 3-D Secure
-      location.href = `payment-result.html?subscription=${data.subscription_id}`;
+      const data = await api(billing === 'prepaid' ? '/billing/checkout' : '/billing/subscribe', { price_id: priceId });
+      location.href = data.checkout_url;             // Xendit's payment page
+      return;
     } catch (e) {
       showMsg(e.message === 'Failed to fetch' ? 'Could not reach the server. Please try again.' : e.message, false);
       btn.disabled = false;

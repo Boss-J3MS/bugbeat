@@ -174,9 +174,9 @@
     </div>
 
     <!-- ── PAYMENTS TAB ──────────────────────── -->
-    <!-- Student Pro: payments (PayMongo), who has Pro now, giving Pro to an
-         account, and turning prices on or off. Only PayMongo's webhook
-         marks a payment as paid; admins can't change payments by hand. -->
+    <!-- Student Pro: payments (Xendit), who has Pro now, giving Pro to an
+         account, and turning prices on or off. Only Xendit can mark a
+         payment as paid; admins can't change payments by hand. -->
     <div id="tab-payments" class="admin-tab">
       <h2 class="admin-section-title">Payments <span id="pay-mode" class="admin-pay-mode" hidden>Test mode</span></h2>
       <div class="admin-stats-grid admin-pay-stats">
@@ -217,6 +217,7 @@
         <button type="button" class="admin-filter__btn" data-status="paid" role="tab" aria-selected="false">Paid</button>
         <button type="button" class="admin-filter__btn" data-status="pending" role="tab" aria-selected="false">Not completed</button>
         <button type="button" class="admin-filter__btn" data-status="failed" role="tab" aria-selected="false">Failed</button>
+        <button type="button" class="admin-filter__btn" data-status="expired" role="tab" aria-selected="false">Expired</button>
       </div>
       <div class="admin-table-wrap">
         <table class="admin-table">
@@ -1335,7 +1336,8 @@
     const PAY_STATUS = {
       paid:    { label: 'Paid',          cls: 'admin-invite-status--active' },
       pending: { label: 'Not completed', cls: 'admin-invite-status--used' },
-      failed:  { label: 'Failed',        cls: 'admin-invite-status--off' }
+      failed:  { label: 'Failed',        cls: 'admin-invite-status--off' },
+      expired: { label: 'Expired',       cls: 'admin-invite-status--off' }
     };
     const SOURCE_TEXT = { prepaid: 'Paid once', auto_renew: 'Auto-renew', admin_grant: 'Given by admin' };
     let paymentStatus = '';

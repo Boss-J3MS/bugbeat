@@ -1,24 +1,25 @@
 // ═══════════════════════════════════════════════
 //  BUGBEAT — billing.js
-//  Plans (Free / Student Pro), limits, and payments through PayMongo.
+//  Plans (Free / Student Pro), limits, and payments through Xendit.
 //
-//  Two ways to pay for Student Pro:
-//    • prepaid     — one payment through PayMongo Checkout buys 30 or 365
-//                    days (cards, QR Ph and other methods PayMongo offers).
-//    • auto_renew  — a PayMongo subscription charges a saved card every
-//                    month or year until it is cancelled.
-//  Only PayMongo's webhook (POST /webhooks/paymongo) marks a payment as
-//  paid and turns Pro on. Admins always have Pro features and can give
-//  Pro to an account for a number of days (admin_grant).
+//  Two ways to pay for Student Pro, both on Xendit's own payment page
+//  (a Payment Session), so card details never reach BugBeat:
+//    • prepaid     — one payment buys 30 or 365 days (cards, e-wallets and
+//                    other methods Xendit offers).
+//    • auto_renew  — a Xendit subscription charges the saved payment method
+//                    every month or year until it is cancelled.
+//  A payment counts only when Xendit says so: its webhook
+//  (POST /webhooks/xendit), or the session status the server asks Xendit
+//  for when the student comes back from the payment page. Admins always
+//  have Pro features and can give Pro to an account (admin_grant).
 //
 //  Settings (Render → Environment, and backend/.env locally):
-//    PAYMONGO_SECRET_KEY      sk_test_… (test mode) — server only
-//    PAYMONGO_PUBLIC_KEY      pk_test_… — sent to the browser for card entry
-//    PAYMONGO_WEBHOOK_SECRET  the webhook's secret key (from PayMongo)
-//    PAYMONGO_AUTO_RENEW      'off' hides the auto-renew option
-//    PAYMONGO_METHODS         payment methods offered at Checkout,
-//                             comma-separated (default card,qrph,gcash,paymaya)
-//  Without PAYMONGO_SECRET_KEY, buying is switched off but the plans and
+//    XENDIT_SECRET_KEY     xnd_development_… (test mode) — server only
+//    XENDIT_WEBHOOK_TOKEN  the webhook verification token from Xendit
+//    XENDIT_AUTO_RENEW     'off' hides the auto-renew option
+//    XENDIT_CHANNELS       optional: payment channels to offer,
+//                          comma-separated (default: all the account has)
+//  Without XENDIT_SECRET_KEY, buying is switched off but the plans and
 //  limits still work.
 // ═══════════════════════════════════════════════
 
@@ -26,18 +27,17 @@ import crypto from 'crypto';
 import db from './db.js';
 import { requireAuth, requireAdmin, verifyToken } from './auth.js';
 
-const PAYMONGO_API    = 'https://api.paymongo.com';
-const SECRET_KEY      = process.env.PAYMONGO_SECRET_KEY || '';
-const PUBLIC_KEY      = process.env.PAYMONGO_PUBLIC_KEY || '';
-const WEBHOOK_SECRET  = process.env.PAYMONGO_WEBHOOK_SECRET || '';
-const AUTO_RENEW_ON   = process.env.PAYMONGO_AUTO_RENEW !== 'off';
-const CHECKOUT_METHODS = (process.env.PAYMONGO_METHODS || 'card,qrph,gcash,paymaya')
-  .split(',').map(s => s.trim()).filter(Boolean);
-const FRONTEND_URL    = (process.env.FRONTEND_URL || 'http://localhost:5500').replace(/\/+$/, '');
+const XENDIT_API     = 'https://api.xendit.co';
+const SECRET_KEY     = process.env.XENDIT_SECRET_KEY || '';
+const WEBHOOK_TOKEN  = process.env.XENDIT_WEBHOOK_TOKEN || '';
+const AUTO_RENEW_ON  = process.env.XENDIT_AUTO_RENEW !== 'off';
+const CHANNELS       = (process.env.XENDIT_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+const FRONTEND_URL   = (process.env.FRONTEND_URL || 'http://localhost:5500').replace(/\/+$/, '');
 
 export const billingEnabled = SECRET_KEY.length > 0;
-const testMode = !SECRET_KEY || SECRET_KEY.startsWith('sk_test_');
-if (!billingEnabled) console.warn('[billing] PAYMONGO_SECRET_KEY not set — buying Student Pro is switched off.');
+const testMode = !SECRET_KEY || SECRET_KEY.startsWith('xnd_development_');
+if (!billingEnabled) console.warn('[billing] XENDIT_SECRET_KEY not set — buying Student Pro is switched off.');
+if (billingEnabled && !WEBHOOK_TOKEN) console.warn('[billing] XENDIT_WEBHOOK_TOKEN not set — webhooks are refused; payments are confirmed when the student returns.');
 
 // Used when the plans tables haven't been created yet (migrations/billing.sql),
 // so Analyze and the rest keep working with the Free limits.
@@ -160,44 +160,36 @@ export async function countAnalysis(user, ip) {
   }
 }
 
-// ── PayMongo API ───────────────────────────────
-class PayMongoError extends Error {
+
+// ── Xendit API ─────────────────────────────────
+class XenditError extends Error {
   constructor(status, body) {
-    const detail = body?.errors?.map(e => e.detail).filter(Boolean).join(' ') || `PayMongo responded ${status}`;
-    super(detail);
+    super(body?.message || body?.error_code || `Xendit responded ${status}`);
     this.status = status;
-    this.body = body;
+    this.code = body?.error_code || null;
   }
 }
 
-async function paymongo(method, path, attributes) {
-  const res = await fetch(`${PAYMONGO_API}${path}`, {
+async function xendit(method, path, body) {
+  const res = await fetch(`${XENDIT_API}${path}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       Accept: 'application/json',
       Authorization: 'Basic ' + Buffer.from(`${SECRET_KEY}:`).toString('base64'),
     },
-    body: attributes === undefined ? undefined : JSON.stringify({ data: { attributes } }),
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new PayMongoError(res.status, body);
-  return body.data;
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new XenditError(res.status, data);
+  return data;
 }
 
-// ── Webhook signature ──────────────────────────
-// Paymongo-Signature: t=<timestamp>,te=<test signature>,li=<live signature>
-// signature = HMAC-SHA256(webhook secret, `${t}.${raw body}`)
-export function verifyPaymongoSignature(header, rawBody, secret = WEBHOOK_SECRET) {
-  if (!header || !rawBody || !secret) return false;
-  const parts = Object.fromEntries(String(header).split(',').map(p => {
-    const i = p.indexOf('=');
-    return [p.slice(0, i).trim(), p.slice(i + 1).trim()];
-  }));
-  const given = parts.li || parts.te;
-  if (!parts.t || !given) return false;
-  const expected = crypto.createHmac('sha256', secret).update(`${parts.t}.${rawBody}`).digest('hex');
-  const a = Buffer.from(expected), b = Buffer.from(given);
+// ── Webhook verification ───────────────────────
+// Xendit sends the account's webhook verification token in x-callback-token.
+export function verifyWebhookToken(given, expected = WEBHOOK_TOKEN) {
+  if (!given || !expected) return false;
+  const a = Buffer.from(String(given)), b = Buffer.from(String(expected));
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
@@ -218,20 +210,58 @@ async function nextStart(conn, userId) {
   return row.last_end ? new Date(row.last_end) : new Date();
 }
 const addDays = (d, days) => new Date(d.getTime() + days * 86400e3);
-
 const periodLabel = days => (days >= 365 ? '1 year' : `${days} days`);
-const peso = c => `₱${(c / 100).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`;
 
-// ── Webhook handlers ───────────────────────────
-// Prepaid: Checkout paid → a Pro period of duration_days.
-async function onCheckoutPaid(session, livemode) {
+// References sent to Xendit, so a completed session points back to the
+// payment or the subscription it belongs to.
+const payRef = id => `bugbeat-pay-${id}`;
+const subRef = id => `bugbeat-sub-${id}`;
+function parseRef(ref) {
+  const m = /^bugbeat-(pay|sub)-(\d+)$/.exec(String(ref || ''));
+  return m ? { kind: m[1], id: Number(m[2]) } : null;
+}
+
+// Creates a Xendit payment session for a user (the hosted payment page).
+// The Xendit customer is made on the first payment and reused after that.
+async function createSession(userId, fields) {
+  const [[cust]] = await db.query('SELECT provider_customer_id FROM billing_customers WHERE user_id = ?', [userId]);
+  const base = {
+    session_type: 'PAY', mode: 'PAYMENT_LINK', currency: 'PHP', country: 'PH', locale: 'en',
+    ...(CHANNELS.length && { allowed_payment_channels: CHANNELS }),
+    ...fields,
+  };
+  if (cust) return xendit('POST', '/sessions', { ...base, customer_id: cust.provider_customer_id });
+
+  const [[u]] = await db.query('SELECT username, nickname, email FROM users WHERE id = ?', [userId]);
+  const customer = (ref) => ({
+    type: 'INDIVIDUAL', reference_id: ref,
+    individual_detail: { given_names: (u.nickname || u.username).slice(0, 50) },
+    ...(u.email && u.email.length <= 50 && { email: u.email }),
+  });
+  let session;
+  try {
+    session = await xendit('POST', '/sessions', { ...base, customer: customer(`bugbeat-user-${userId}`) });
+  } catch (err) {
+    // A customer with that reference may already exist at Xendit.
+    if (!(err instanceof XenditError) || err.status !== 400 || !/customer|reference|duplicate/i.test(err.message)) throw err;
+    session = await xendit('POST', '/sessions', { ...base, customer: customer(`bugbeat-user-${userId}-${Date.now()}`) });
+  }
+  if (session.customer_id) {
+    await db.query('INSERT IGNORE INTO billing_customers (user_id, provider_customer_id) VALUES (?, ?)', [userId, session.customer_id]);
+  }
+  return session;
+}
+
+// ── Payment results (webhook or status check) ──
+// Prepaid: the payment went through → a Pro period of duration_days.
+async function prepaidPaid(paymentId) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
     const [[pay]] = await conn.query(
       `SELECT pm.*, pp.duration_days, pp.plan_id FROM payments pm
          JOIN plan_prices pp ON pp.id = pm.price_id
-        WHERE pm.checkout_session_id = ? FOR UPDATE`, [session.id]);
+        WHERE pm.id = ? AND pm.subscription_id IS NULL FOR UPDATE`, [paymentId]);
     if (!pay || pay.status === 'paid') { await conn.commit(); return; }
     const start = await nextStart(conn, pay.user_id);
     const end = addDays(start, pay.duration_days);
@@ -240,95 +270,135 @@ async function onCheckoutPaid(session, livemode) {
        VALUES (?, ?, ?, 'prepaid', 'active', ?, ?)`,
       [pay.user_id, pay.plan_id, pay.price_id, start, end]);
     await conn.query(
-      `UPDATE payments SET status = 'paid', paid_at = NOW(), subscription_id = ?, livemode = ? WHERE id = ?`,
-      [sub.insertId, livemode ? 1 : 0, pay.id]);
+      `UPDATE payments SET status = 'paid', paid_at = NOW(), subscription_id = ?, test_mode = ? WHERE id = ?`,
+      [sub.insertId, testMode ? 1 : 0, pay.id]);
     await conn.commit();
   } catch (err) { await conn.rollback(); throw err; }
   finally { conn.release(); }
 }
 
-// Auto-renew: the first payment went through → Pro starts.
-async function activateSubscription(conn, sub) {
-  if (sub.ends_at) return false;                    // already active
-  const start = await nextStart(conn, sub.user_id);
-  await conn.query(
-    `UPDATE subscriptions SET status = 'active', starts_at = ?, ends_at = ? WHERE id = ?`,
-    [start, addDays(start, sub.duration_days), sub.id]);
-  return true;
-}
-
-async function lockSubscription(conn, paymongoSubId) {
+async function lockSub(conn, where, value) {
   const [[sub]] = await conn.query(
     `SELECT s.*, pp.duration_days FROM subscriptions s
        JOIN plan_prices pp ON pp.id = s.price_id
-      WHERE s.paymongo_subscription_id = ? FOR UPDATE`, [paymongoSubId]);
+      WHERE s.${where} = ? AND s.source = 'auto_renew' FOR UPDATE`, [value]);
   return sub || null;
 }
 
-async function onSubscriptionActivated(resource, livemode) {
+// Auto-renew: the first payment went through → Pro starts. Safe to call
+// more than once (the session webhook, the first cycle webhook and the
+// status check can all report it).
+async function subscriptionStarted(subId, planId) {
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const sub = await lockSubscription(conn, resource.id);
-    if (sub) {
-      await activateSubscription(conn, sub);
-      await conn.query(
-        `UPDATE payments SET status = 'paid', paid_at = COALESCE(paid_at, NOW()), livemode = ?
-          WHERE subscription_id = ? AND invoice_id IS NULL AND status = 'pending'`,
-        [livemode ? 1 : 0, sub.id]);
-    }
-    await conn.commit();
-  } catch (err) { await conn.rollback(); throw err; }
-  finally { conn.release(); }
-}
-
-// An invoice was paid: the first one starts Pro, later ones add a period.
-async function onInvoicePaid(invoice, livemode) {
-  const subId = invoice.attributes?.resource_id || invoice.attributes?.subscription_id;
-  if (!subId) return;
-  const conn = await db.getConnection();
-  try {
-    await conn.beginTransaction();
-    const sub = await lockSubscription(conn, subId);
+    const sub = await lockSub(conn, 'id', subId);
     if (!sub) { await conn.commit(); return; }
-    const [[seen]] = await conn.query('SELECT id FROM payments WHERE invoice_id = ?', [invoice.id]);
-    if (seen) { await conn.commit(); return; }
-    // The first payment row (made at sign-up) has no invoice yet.
-    const [[first]] = await conn.query(
-      `SELECT id FROM payments WHERE subscription_id = ? AND invoice_id IS NULL ORDER BY id LIMIT 1 FOR UPDATE`, [sub.id]);
-    if (first) {
-      await activateSubscription(conn, sub);
+    if (planId && !sub.provider_plan_id) {
+      await conn.query('UPDATE subscriptions SET provider_plan_id = ? WHERE id = ?', [planId, sub.id]);
+    }
+    if (!sub.ends_at) {
+      const start = await nextStart(conn, sub.user_id);
       await conn.query(
-        `UPDATE payments SET status = 'paid', paid_at = COALESCE(paid_at, NOW()), invoice_id = ?, livemode = ? WHERE id = ?`,
-        [invoice.id, livemode ? 1 : 0, first.id]);
-    } else {
-      // A renewal: one more period from the later of now or the current end.
-      const from = sub.ends_at && new Date(sub.ends_at) > new Date() ? new Date(sub.ends_at) : new Date();
+        `UPDATE subscriptions SET status = 'active', starts_at = ?, ends_at = ? WHERE id = ?`,
+        [start, addDays(start, sub.duration_days), sub.id]);
       await conn.query(
-        `UPDATE subscriptions SET status = 'active', ends_at = ? WHERE id = ?`,
-        [addDays(from, sub.duration_days), sub.id]);
-      await conn.query(
-        `INSERT INTO payments (user_id, price_id, subscription_id, invoice_id, amount_centavos, status, livemode, paid_at)
-         VALUES (?, ?, ?, ?, ?, 'paid', ?, NOW())`,
-        [sub.user_id, sub.price_id, sub.id, invoice.id,
-         Number(invoice.attributes?.amount) || 0, livemode ? 1 : 0]);
+        `UPDATE payments SET status = 'paid', paid_at = COALESCE(paid_at, NOW()), test_mode = ?
+          WHERE subscription_id = ? AND cycle_id IS NULL AND status = 'pending'`,
+        [testMode ? 1 : 0, sub.id]);
     }
     await conn.commit();
   } catch (err) { await conn.rollback(); throw err; }
   finally { conn.release(); }
 }
 
-async function onSubscriptionStatus(resource, status) {
-  const s = String(status || '').toLowerCase();
-  if (s === 'past_due' || s === 'unpaid') {
-    // Pro still runs to the end of the paid period; no more renewals for unpaid.
+async function sessionCompleted(data) {
+  const ref = parseRef(data.reference_id);
+  if (!ref) return;
+  if (ref.kind === 'pay') await prepaidPaid(ref.id);
+  else await subscriptionStarted(ref.id, data.recurring_plan_id || null);
+}
+
+async function sessionEnded(data) {
+  const ref = parseRef(data.reference_id);
+  if (!ref) return;
+  if (ref.kind === 'pay') {
+    await db.query(`UPDATE payments SET status = 'expired' WHERE id = ? AND status = 'pending'`, [ref.id]);
+  } else {
+    await db.query(`UPDATE payments SET status = 'expired' WHERE subscription_id = ? AND status = 'pending'`, [ref.id]);
     await db.query(
-      `UPDATE subscriptions SET status = 'past_due', auto_renew = IF(? = 'unpaid', 0, auto_renew)
-        WHERE paymongo_subscription_id = ?`, [s, resource.id]);
-  } else if (s === 'cancelled' || s === 'incomplete_cancelled') {
+      `UPDATE subscriptions SET status = 'cancelled', auto_renew = 0, cancelled_at = NOW()
+        WHERE id = ? AND ends_at IS NULL`, [ref.id]);
+  }
+}
+
+// A recurring cycle was charged. The first one (charged when the plan was
+// made) only confirms the start; later ones add a period each.
+async function cycleSucceeded(cycle) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const sub = await lockSub(conn, 'provider_plan_id', cycle.plan_id);
+    if (!sub) {
+      await conn.commit();
+      // The plan id isn't saved yet (its session result hasn't arrived):
+      // fail so Xendit sends this event again later.
+      throw Object.assign(new Error(`No subscription for plan ${cycle.plan_id} yet`), { retry: true });
+    }
+    const [[seen]] = await conn.query('SELECT id FROM payments WHERE cycle_id = ?', [cycle.id]);
+    if (seen) { await conn.commit(); return; }
+    const first = cycle.type === 'IMMEDIATE' || Number(cycle.cycle_number) === 1;
+    const [[firstPay]] = await conn.query(
+      `SELECT id FROM payments WHERE subscription_id = ? AND cycle_id IS NULL ORDER BY id LIMIT 1 FOR UPDATE`, [sub.id]);
+    if (first || (!sub.ends_at && firstPay)) {
+      if (!sub.ends_at) {
+        const start = await nextStart(conn, sub.user_id);
+        await conn.query(`UPDATE subscriptions SET status = 'active', starts_at = ?, ends_at = ? WHERE id = ?`,
+          [start, addDays(start, sub.duration_days), sub.id]);
+      }
+      if (firstPay) {
+        await conn.query(
+          `UPDATE payments SET status = 'paid', paid_at = COALESCE(paid_at, NOW()), cycle_id = ?, test_mode = ? WHERE id = ?`,
+          [cycle.id, testMode ? 1 : 0, firstPay.id]);
+      }
+    } else {
+      const from = sub.ends_at && new Date(sub.ends_at) > new Date() ? new Date(sub.ends_at) : new Date();
+      await conn.query(`UPDATE subscriptions SET status = 'active', ends_at = ? WHERE id = ?`,
+        [addDays(from, sub.duration_days), sub.id]);
+      const [[price]] = await conn.query('SELECT amount_centavos FROM plan_prices WHERE id = ?', [sub.price_id]);
+      await conn.query(
+        `INSERT INTO payments (user_id, price_id, subscription_id, cycle_id, amount_centavos, status, test_mode, paid_at)
+         VALUES (?, ?, ?, ?, ?, 'paid', ?, NOW())`,
+        [sub.user_id, sub.price_id, sub.id, cycle.id,
+         Math.round(Number(cycle.amount) * 100) || price.amount_centavos, testMode ? 1 : 0]);
+    }
+    await conn.commit();
+  } catch (err) { if (!err.retry) await conn.rollback().catch(() => {}); throw err; }
+  finally { conn.release(); }
+}
+
+async function planStatus(planId, what) {
+  if (what === 'past_due') {
+    // A renewal failed; Pro still runs to the end of the paid period.
+    await db.query(`UPDATE subscriptions SET status = 'past_due' WHERE provider_plan_id = ? AND ends_at IS NOT NULL`, [planId]);
+  } else if (what === 'stopped') {
     await db.query(
-      `UPDATE subscriptions SET status = 'cancelled', auto_renew = 0, cancelled_at = COALESCE(cancelled_at, NOW())
-        WHERE paymongo_subscription_id = ?`, [resource.id]);
+      `UPDATE subscriptions SET auto_renew = 0, cancelled_at = COALESCE(cancelled_at, NOW()),
+              status = IF(ends_at IS NULL, 'cancelled', status)
+        WHERE provider_plan_id = ?`, [planId]);
+  }
+}
+
+// Asks Xendit for a pending payment's session, in case its webhook hasn't
+// arrived (or isn't set up). Returns nothing; the tables are updated.
+async function syncSession(sessionId) {
+  if (!billingEnabled || !sessionId) return;
+  try {
+    const s = await xendit('GET', `/sessions/${encodeURIComponent(sessionId)}`);
+    if (s.status === 'COMPLETED') await sessionCompleted(s);
+    else if (s.status === 'EXPIRED' || s.status === 'CANCELED') await sessionEnded(s);
+  } catch (err) {
+    console.warn('[billing] session status check failed:', err.message);
   }
 }
 
@@ -337,9 +407,10 @@ async function onSubscriptionStatus(resource, status) {
 export function registerBillingRoutes(app, { clientIp, errorRef }) {
   const fail = (res, where, err, message) => {
     console.error(`${where} error:`, err.message);
-    res.status(err instanceof PayMongoError ? 502 : 500)
+    res.status(err instanceof XenditError ? 502 : 500)
        .json({ error: message, ref: errorRef(err) });
   };
+  const returnUrl = (q) => `${FRONTEND_URL}/payment-result.html?${q}`;
 
   // GET /plans — plans, limits and prices (Plans page).
   app.get('/plans', async (req, res) => {
@@ -359,7 +430,6 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
         buying_enabled: billingEnabled && tablesReady,
         auto_renew_enabled: billingEnabled && tablesReady && AUTO_RENEW_ON,
         test_mode: testMode,
-        public_key: PUBLIC_KEY || null,
       });
     } catch (err) { fail(res, 'GET /plans', err, 'Could not load the plans.'); }
   });
@@ -392,55 +462,43 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
     } catch (err) { fail(res, 'GET /billing/me', err, 'Could not load your plan.'); }
   });
 
-  // POST /billing/checkout — prepaid: returns PayMongo's checkout page URL.
+  const canBuy = (req, res) => {
+    if (!billingEnabled || !tablesReady) { res.status(503).json({ error: 'Buying Student Pro is not available right now.' }); return false; }
+    if (req.user.role === 'admin') { res.status(400).json({ error: 'Admins already have every Student Pro feature.' }); return false; }
+    return true;
+  };
+
+  // POST /billing/checkout — prepaid: returns Xendit's payment page URL.
   app.post('/billing/checkout', requireAuth, async (req, res) => {
-    if (!billingEnabled || !tablesReady) return res.status(503).json({ error: 'Buying Student Pro is not available right now.' });
-    if (req.user.role === 'admin') return res.status(400).json({ error: 'Admins already have every Student Pro feature.' });
+    if (!canBuy(req, res)) return;
     try {
       const price = await priceById(Number(req.body?.price_id));
       if (!price || !price.is_active || price.billing !== 'prepaid') {
         return res.status(400).json({ error: 'That price is not available.' });
       }
       const [ins] = await db.query(
-        `INSERT INTO payments (user_id, price_id, amount_centavos, status) VALUES (?, ?, ?, 'pending')`,
-        [req.user.userId, price.id, price.amount_centavos]);
+        `INSERT INTO payments (user_id, price_id, amount_centavos, status, test_mode) VALUES (?, ?, ?, 'pending', ?)`,
+        [req.user.userId, price.id, price.amount_centavos, testMode ? 1 : 0]);
       const paymentId = ins.insertId;
-      const attributes = {
-        line_items: [{
-          name: `${price.plan_name} (${periodLabel(price.duration_days)})`,
-          amount: price.amount_centavos, currency: 'PHP', quantity: 1,
-        }],
-        payment_method_types: CHECKOUT_METHODS,
+      const session = await createSession(req.user.userId, {
+        reference_id: payRef(paymentId),
+        session_type: 'PAY',
+        amount: price.amount_centavos / 100,
         description: `BugBeat ${price.plan_name}, ${periodLabel(price.duration_days)}`,
-        reference_number: `BB-${paymentId}`,
-        success_url: `${FRONTEND_URL}/payment-result.html?payment=${paymentId}`,
-        cancel_url: `${FRONTEND_URL}/payment-result.html?payment=${paymentId}&cancelled=1`,
-        send_email_receipt: false,
-        show_description: true,
-        show_line_items: true,
-      };
-      let session;
-      try {
-        session = await paymongo('POST', '/v1/checkout_sessions', attributes);
-      } catch (err) {
-        // A method the account hasn't enabled is refused: retry with card only.
-        if (!(err instanceof PayMongoError) || err.status !== 400 || CHECKOUT_METHODS.join() === 'card') throw err;
-        console.warn('[billing] checkout refused the method list, retrying with card only:', err.message);
-        session = await paymongo('POST', '/v1/checkout_sessions', { ...attributes, payment_method_types: ['card'] });
-      }
-      await db.query('UPDATE payments SET checkout_session_id = ? WHERE id = ?', [session.id, paymentId]);
-      res.json({ checkout_url: session.attributes.checkout_url, payment_id: paymentId });
+        success_return_url: returnUrl(`payment=${paymentId}`),
+        cancel_return_url: returnUrl(`payment=${paymentId}&cancelled=1`),
+        metadata: { payment_id: String(paymentId) },
+      });
+      await db.query('UPDATE payments SET session_id = ? WHERE id = ?', [session.payment_session_id, paymentId]);
+      res.json({ checkout_url: session.payment_link_url, payment_id: paymentId });
     } catch (err) { fail(res, 'POST /billing/checkout', err, 'Could not start the payment. Please try again.'); }
   });
 
-  // POST /billing/subscribe — auto-renew. The browser first creates a card
-  // payment method with PayMongo's public key (the card number never
-  // reaches this server) and sends its id here.
+  // POST /billing/subscribe — auto-renew: returns Xendit's payment page URL,
+  // where the student pays the first period and saves the payment method.
   app.post('/billing/subscribe', requireAuth, async (req, res) => {
-    if (!billingEnabled || !tablesReady || !AUTO_RENEW_ON) return res.status(503).json({ error: 'Auto-renew is not available right now.' });
-    if (req.user.role === 'admin') return res.status(400).json({ error: 'Admins already have every Student Pro feature.' });
-    const pmId = String(req.body?.payment_method_id || '');
-    if (!/^pm_[A-Za-z0-9]+$/.test(pmId)) return res.status(400).json({ error: 'Card details are missing.' });
+    if (!canBuy(req, res)) return;
+    if (!AUTO_RENEW_ON) return res.status(503).json({ error: 'Auto-renew is not available right now.' });
     try {
       const price = await priceById(Number(req.body?.price_id));
       if (!price || !price.is_active || price.billing !== 'auto_renew') {
@@ -451,68 +509,32 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
             AND status IN ('active','past_due')`, [req.user.userId]);
       if (existing) return res.status(409).json({ error: 'You already have auto-renew on. Cancel it first to switch.' });
 
-      // 1. The PayMongo plan for this price (made once, then reused).
-      let planId = price.paymongo_plan_id;
-      if (!planId) {
-        const base = {
-          name: `BugBeat ${price.plan_name} (${periodLabel(price.duration_days)})`,
-          description: `BugBeat ${price.plan_name}, renews every ${periodLabel(price.duration_days)}`,
-          amount: price.amount_centavos, currency: 'PHP', interval_count: 1,
-        };
-        const tries = price.duration_days >= 365 ? ['yearly', 'year'] : ['monthly', 'month'];
-        let lastErr;
-        for (const interval of tries) {
-          try { planId = (await paymongo('POST', '/v1/subscriptions/plans', { ...base, interval })).id; break; }
-          catch (err) { lastErr = err; if (!(err instanceof PayMongoError) || err.status !== 400) throw err; }
-        }
-        if (!planId) throw lastErr;
-        await db.query('UPDATE plan_prices SET paymongo_plan_id = ? WHERE id = ?', [planId, price.id]);
-      }
-
-      // 2. The user's PayMongo customer (made once).
-      let [[cust]] = await db.query('SELECT paymongo_customer_id FROM billing_customers WHERE user_id = ?', [req.user.userId]);
-      let customerId = cust?.paymongo_customer_id;
-      if (!customerId) {
-        const [[u]] = await db.query('SELECT username, nickname, email FROM users WHERE id = ?', [req.user.userId]);
-        const customer = await paymongo('POST', '/v1/customers', {
-          first_name: (u.nickname || u.username).slice(0, 50), last_name: 'BugBeat user',
-          email: u.email, default_device: 'email',
-        });
-        customerId = customer.id;
-        await db.query('INSERT INTO billing_customers (user_id, paymongo_customer_id) VALUES (?, ?)', [req.user.userId, customerId]);
-      }
-
-      // 3. The subscription; PayMongo makes its first invoice right away.
-      const created = await paymongo('POST', '/v1/subscriptions', { customer_id: customerId, plan_id: planId });
-      const inv = created.attributes?.latest_invoice || {};
-      const intentId = inv.payment_intent?.id || inv.payment_intent_id || (typeof inv.payment_intent === 'string' ? inv.payment_intent : null);
-      if (!intentId) throw new Error('PayMongo did not return a payment for the new subscription.');
       const [sub] = await db.query(
-        `INSERT INTO subscriptions (user_id, plan_id, price_id, source, status, auto_renew, paymongo_subscription_id)
-         VALUES (?, ?, ?, 'auto_renew', 'pending', 1, ?)`,
-        [req.user.userId, price.plan_id, price.id, created.id]);
-      await db.query(
-        `INSERT INTO payments (user_id, price_id, subscription_id, payment_intent_id, amount_centavos, status)
-         VALUES (?, ?, ?, ?, ?, 'pending')`,
-        [req.user.userId, price.id, sub.insertId, intentId, price.amount_centavos]);
-
-      // 4. Pay the first invoice with the card (3-D Secure may need a redirect).
-      const intent = await paymongo('POST', `/v1/payment_intents/${intentId}/attach`, {
-        payment_method: pmId,
-        return_url: `${FRONTEND_URL}/payment-result.html?subscription=${sub.insertId}`,
+        `INSERT INTO subscriptions (user_id, plan_id, price_id, source, status, auto_renew)
+         VALUES (?, ?, ?, 'auto_renew', 'pending', 1)`, [req.user.userId, price.plan_id, price.id]);
+      const subId = sub.insertId;
+      const [pay] = await db.query(
+        `INSERT INTO payments (user_id, price_id, subscription_id, amount_centavos, status, test_mode)
+         VALUES (?, ?, ?, ?, 'pending', ?)`, [req.user.userId, price.id, subId, price.amount_centavos, testMode ? 1 : 0]);
+      const yearly = price.duration_days >= 365;
+      const session = await createSession(req.user.userId, {
+        reference_id: subRef(subId),
+        session_type: 'SUBSCRIPTION',
+        amount: price.amount_centavos / 100,
+        description: `BugBeat ${price.plan_name}, renews every ${yearly ? 'year' : 'month'}`,
+        subscription: {
+          schedule: { interval: 'MONTH', interval_count: yearly ? 12 : 1 },
+          failed_cycle_action: 'STOP',
+        },
+        success_return_url: returnUrl(`subscription=${subId}`),
+        cancel_return_url: returnUrl(`subscription=${subId}&cancelled=1`),
+        metadata: { subscription_id: String(subId) },
       });
-      const status = intent.attributes?.status;
-      if (status === 'awaiting_next_action') {
-        return res.json({ redirect_url: intent.attributes.next_action?.redirect?.url, subscription_id: sub.insertId });
-      }
-      if (status === 'succeeded' || status === 'processing') {
-        return res.json({ subscription_id: sub.insertId, status: 'processing' });
-      }
-      const why = intent.attributes?.last_payment_error?.failed_message || 'The card was declined.';
-      await db.query(`UPDATE payments SET status = 'failed' WHERE subscription_id = ?`, [sub.insertId]);
-      await db.query(`UPDATE subscriptions SET status = 'cancelled', auto_renew = 0, cancelled_at = NOW() WHERE id = ?`, [sub.insertId]);
-      res.status(402).json({ error: why });
-    } catch (err) { fail(res, 'POST /billing/subscribe', err, err instanceof PayMongoError ? `Payment failed: ${err.message}` : 'Could not start auto-renew. Please try again.'); }
+      await db.query('UPDATE subscriptions SET provider_session_id = ?, provider_plan_id = ? WHERE id = ?',
+        [session.payment_session_id, session.recurring_plan_id || null, subId]);
+      await db.query('UPDATE payments SET session_id = ? WHERE id = ?', [session.payment_session_id, pay.insertId]);
+      res.json({ checkout_url: session.payment_link_url, subscription_id: subId });
+    } catch (err) { fail(res, 'POST /billing/subscribe', err, 'Could not start auto-renew. Please try again.'); }
   });
 
   // POST /billing/cancel-renewal — stops future charges; Pro runs to the end
@@ -520,15 +542,17 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
   app.post('/billing/cancel-renewal', requireAuth, async (req, res) => {
     try {
       const [[sub]] = await db.query(
-        `SELECT id, paymongo_subscription_id, ends_at FROM subscriptions
+        `SELECT id, provider_plan_id, ends_at FROM subscriptions
           WHERE user_id = ? AND source = 'auto_renew' AND auto_renew = 1 AND status IN ('active','past_due','pending')
           ORDER BY id DESC LIMIT 1`, [req.user.userId]);
       if (!sub) return res.status(404).json({ error: 'You have no auto-renew to cancel.' });
-      try {
-        await paymongo('POST', `/v1/subscriptions/${sub.paymongo_subscription_id}/cancel`, { cancellation_reason: 'other' });
-      } catch (err) {
-        if (!(err instanceof PayMongoError) || err.status !== 404) throw err;
-        await paymongo('DELETE', `/v1/subscriptions/${sub.paymongo_subscription_id}`);
+      if (sub.provider_plan_id) {
+        try {
+          await xendit('POST', `/recurring/plans/${encodeURIComponent(sub.provider_plan_id)}/deactivate`);
+        } catch (err) {
+          // Already inactive at Xendit is fine; anything else is an error.
+          if (!(err instanceof XenditError) || err.status !== 404) throw err;
+        }
       }
       await db.query(
         `UPDATE subscriptions SET auto_renew = 0, status = IF(ends_at IS NULL, 'cancelled', status), cancelled_at = NOW() WHERE id = ?`,
@@ -552,14 +576,20 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
     }
   });
 
-  // GET /billing/payment/:id — status of one of the user's payments
-  // (the payment result page asks this while the webhook arrives).
+  // GET /billing/payment/:id — status of one of the user's payments (the
+  // payment result page asks this). While pending, Xendit is asked directly.
   app.get('/billing/payment/:id', requireAuth, async (req, res) => {
     try {
-      const [[row]] = await db.query(
-        `SELECT pm.status, s.ends_at FROM payments pm LEFT JOIN subscriptions s ON s.id = pm.subscription_id
-          WHERE pm.id = ? AND pm.user_id = ?`, [Number(req.params.id), req.user.userId]);
+      const sql = `SELECT pm.status, pm.session_id, s.ends_at FROM payments pm
+                     LEFT JOIN subscriptions s ON s.id = pm.subscription_id
+                    WHERE pm.id = ? AND pm.user_id = ?`;
+      const args = [Number(req.params.id), req.user.userId];
+      let [[row]] = await db.query(sql, args);
       if (!row) return res.status(404).json({ error: 'Payment not found.' });
+      if (row.status === 'pending' && row.session_id) {
+        await syncSession(row.session_id);
+        [[row]] = await db.query(sql, args);
+      }
       res.json({ status: row.status, pro_until: row.ends_at || null });
     } catch (err) { fail(res, 'GET /billing/payment', err, 'Could not check the payment.'); }
   });
@@ -567,42 +597,49 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
   // GET /billing/subscription/:id — same, for the first auto-renew payment.
   app.get('/billing/subscription/:id', requireAuth, async (req, res) => {
     try {
-      const [[row]] = await db.query(
-        `SELECT status, ends_at FROM subscriptions WHERE id = ? AND user_id = ?`,
-        [Number(req.params.id), req.user.userId]);
+      const sql = 'SELECT status, ends_at, provider_session_id FROM subscriptions WHERE id = ? AND user_id = ?';
+      const args = [Number(req.params.id), req.user.userId];
+      let [[row]] = await db.query(sql, args);
       if (!row) return res.status(404).json({ error: 'Subscription not found.' });
+      if (!row.ends_at && row.status === 'pending' && row.provider_session_id) {
+        await syncSession(row.provider_session_id);
+        [[row]] = await db.query(sql, args);
+      }
       res.json({ status: row.ends_at ? 'paid' : (row.status === 'cancelled' ? 'failed' : 'pending'), pro_until: row.ends_at || null });
     } catch (err) { fail(res, 'GET /billing/subscription', err, 'Could not check the subscription.'); }
   });
 
-  // POST /webhooks/paymongo — PayMongo tells us a payment happened.
-  app.post('/webhooks/paymongo', async (req, res) => {
-    if (!verifyPaymongoSignature(req.get('Paymongo-Signature'), req.rawBody?.toString('utf8'))) {
-      return res.status(401).json({ error: 'Invalid signature.' });
+  // POST /webhooks/xendit — Xendit tells us a payment happened.
+  app.post('/webhooks/xendit', async (req, res) => {
+    if (!verifyWebhookToken(req.get('x-callback-token'))) {
+      return res.status(401).json({ error: 'Invalid token.' });
     }
-    const event = req.body?.data;
-    const type = event?.attributes?.type;
-    const resource = event?.attributes?.data;
-    const livemode = !!event?.attributes?.livemode;
-    if (!event?.id || !type || !resource) return res.status(400).json({ error: 'Unexpected payload.' });
+    const type = req.body?.event;
+    const data = req.body?.data;
+    if (!type || !data) return res.status(400).json({ error: 'Unexpected payload.' });
+    const key = crypto.createHash('sha256').update(req.rawBody || JSON.stringify(req.body)).digest('hex');
     try {
-      const [ins] = await db.query('INSERT IGNORE INTO paymongo_events (event_id, event_type) VALUES (?, ?)', [event.id, type]);
+      const [ins] = await db.query('INSERT IGNORE INTO payment_events (event_key, event_type) VALUES (?, ?)', [key, type]);
       if (ins.affectedRows === 0) return res.json({ received: true, duplicate: true });
       try {
-        if (type === 'checkout_session.payment.paid') await onCheckoutPaid(resource, livemode);
-        else if (type === 'subscription.activated') await onSubscriptionActivated(resource, livemode);
-        else if (type === 'subscription.invoice.paid') await onInvoicePaid(resource, livemode);
-        else if (type === 'subscription.past_due') await onSubscriptionStatus(resource, 'past_due');
-        else if (type === 'subscription.unpaid') await onSubscriptionStatus(resource, 'unpaid');
-        else if (type === 'subscription.updated') await onSubscriptionStatus(resource, resource.attributes?.status);
+        if (type === 'payment_session.completed') await sessionCompleted(data);
+        else if (type === 'payment_session.expired') await sessionEnded(data);
+        else if (type === 'recurring.plan.activated') {
+          const ref = parseRef(data.reference_id);
+          if (ref?.kind === 'sub') await subscriptionStarted(ref.id, data.id);
+        }
+        else if (type === 'recurring.cycle.succeeded') await cycleSucceeded(data);
+        else if (type === 'recurring.cycle.retrying') await planStatus(data.plan_id, 'past_due');
+        else if (type === 'recurring.cycle.failed') { await planStatus(data.plan_id, 'past_due'); await planStatus(data.plan_id, 'stopped'); }
+        else if (type === 'recurring.plan.inactivated') await planStatus(data.id, 'stopped');
       } catch (err) {
-        // Let PayMongo retry this event later.
-        await db.query('DELETE FROM paymongo_events WHERE event_id = ?', [event.id]).catch(() => {});
+        // Let Xendit retry this delivery later.
+        await db.query('DELETE FROM payment_events WHERE event_key = ?', [key]).catch(() => {});
         throw err;
       }
       res.json({ received: true });
     } catch (err) {
-      console.error('POST /webhooks/paymongo error:', type, err.message);
+      if (!err.retry) console.error('POST /webhooks/xendit error:', type, err.message);
       res.status(500).json({ error: 'Could not process the event.' });
     }
   });
@@ -611,9 +648,9 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
   // GET /admin/billing — payments (filter by status), Pro users and prices.
   app.get('/admin/billing', requireAdmin, async (req, res) => {
     try {
-      const status = ['pending', 'paid', 'failed'].includes(req.query.status) ? req.query.status : null;
+      const status = ['pending', 'paid', 'failed', 'expired'].includes(req.query.status) ? req.query.status : null;
       const [payments] = await db.query(
-        `SELECT pm.id, pm.amount_centavos, pm.status, pm.livemode, pm.created_at, pm.paid_at,
+        `SELECT pm.id, pm.amount_centavos, pm.status, pm.test_mode, pm.created_at, pm.paid_at,
                 u.username, u.email, pp.billing, pp.duration_days
            FROM payments pm JOIN users u ON u.id = pm.user_id JOIN plan_prices pp ON pp.id = pm.price_id
           ${status ? 'WHERE pm.status = ?' : ''}
@@ -691,4 +728,3 @@ export function registerBillingRoutes(app, { clientIp, errorRef }) {
   });
 }
 
-export { peso, periodLabel };

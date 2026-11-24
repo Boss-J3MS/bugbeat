@@ -36,8 +36,8 @@
 
     <div id="pl-test" class="pl-test" hidden>
       <strong>Test mode:</strong> payments are simulated and no real money is charged.
-      Use the test card <code>4343 4343 4343 4345</code> with any future expiry date and any 3-digit CVC.
-      <code>4111 1111 1111 1111</code> is declined.
+      On the payment page, use the test card <code>4000 0000 0000 1000</code> with any future expiry date and any CVV,
+      or follow the page's test instructions for e-wallets.
     </div>
 
     <div id="pl-current" class="pl-current" role="status" hidden></div>
@@ -65,25 +65,6 @@
           <div id="pl-options" class="pl-options" role="radiogroup" aria-label="Length"></div>
           <p id="pl-billing-help" class="pl-note"></p>
 
-          <!-- Auto-renew: the card is sent straight to PayMongo, never to BugBeat's server. -->
-          <form id="pl-card-form" class="pl-cardform" novalidate hidden>
-            <label class="pl-field pl-field--wide">
-              <span>Card number</span>
-              <input id="pl-cc-number" inputmode="numeric" autocomplete="cc-number" placeholder="4343 4343 4343 4345" maxlength="23" />
-            </label>
-            <label class="pl-field">
-              <span>Expiry (MM/YY)</span>
-              <input id="pl-cc-exp" inputmode="numeric" autocomplete="cc-exp" placeholder="12/28" maxlength="5" />
-            </label>
-            <label class="pl-field">
-              <span>CVC</span>
-              <input id="pl-cc-cvc" inputmode="numeric" autocomplete="cc-csc" placeholder="123" maxlength="4" />
-            </label>
-            <label class="pl-field pl-field--wide">
-              <span>Name on card</span>
-              <input id="pl-cc-name" autocomplete="cc-name" placeholder="Juan Dela Cruz" maxlength="80" />
-            </label>
-          </form>
 
           <button type="button" id="pl-pay" class="cb-btn cb-btn--primary pl-pay">Continue to payment</button>
           <div id="pl-msg" class="pl-msg" role="alert" hidden></div>
@@ -92,7 +73,7 @@
       </section>
     </div>
 
-    <p class="pl-small">Payments are handled by PayMongo. BugBeat never sees or stores your card number.
+    <p class="pl-small">Payments are handled by Xendit on its own payment page. BugBeat never sees or stores your card or e-wallet details.
       Auto-renew can be turned off any time in Settings → Plan; Student Pro then stays on until the end of the period you paid for.</p>
   </main>
 

@@ -1,5 +1,5 @@
 -- ═══════════════════════════════════════════════
---  BugBeat — plans and billing tables
+--  BugBeat — plans and billing tables (payments through Xendit)
 --  Run once on the local database (phpMyAdmin) and on Aiven (HeidiSQL).
 --  Safe to run again: tables are only created if missing, and the
 --  starting plans and prices are only added if missing.
@@ -20,24 +20,23 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 
 -- What can be bought. billing = 'prepaid' (one payment, a fixed number of
--- days) or 'auto_renew' (charged again every period from a saved card).
+-- days) or 'auto_renew' (charged again every period by Xendit).
 CREATE TABLE IF NOT EXISTS plan_prices (
   id                INT AUTO_INCREMENT PRIMARY KEY,
   plan_id           INT          NOT NULL,
   billing           ENUM('prepaid','auto_renew') NOT NULL,
   duration_days     INT          NOT NULL,
   amount_centavos   INT          NOT NULL,        -- ₱99.00 = 9900
-  paymongo_plan_id  VARCHAR(64)  NULL,            -- auto_renew only; filled in on first use
   is_active         TINYINT(1)   NOT NULL DEFAULT 1,
   created_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_plan_price (plan_id, billing, duration_days),
   CONSTRAINT fk_plan_prices_plan FOREIGN KEY (plan_id) REFERENCES plans(id)
 );
 
--- The PayMongo customer made for a user (auto-renew only).
+-- The Xendit customer made for a user on their first payment.
 CREATE TABLE IF NOT EXISTS billing_customers (
   user_id               INT          PRIMARY KEY,
-  paymongo_customer_id  VARCHAR(64)  NOT NULL UNIQUE,
+  provider_customer_id  VARCHAR(64)  NOT NULL UNIQUE,
   created_at            DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_billing_customers_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
@@ -45,20 +44,21 @@ CREATE TABLE IF NOT EXISTS billing_customers (
 -- Each period of Pro a user has: bought once, auto-renewing, or given by an
 -- admin. A user is on Pro while one of these has starts_at <= now < ends_at.
 CREATE TABLE IF NOT EXISTS subscriptions (
-  id                        INT AUTO_INCREMENT PRIMARY KEY,
-  user_id                   INT          NOT NULL,
-  plan_id                   INT          NOT NULL,
-  price_id                  INT          NULL,      -- NULL for an admin grant
-  source                    ENUM('prepaid','auto_renew','admin_grant') NOT NULL,
-  status                    ENUM('pending','active','past_due','cancelled') NOT NULL DEFAULT 'pending',
-  starts_at                 DATETIME     NULL,
-  ends_at                   DATETIME     NULL,
-  auto_renew                TINYINT(1)   NOT NULL DEFAULT 0,
-  paymongo_subscription_id  VARCHAR(64)  NULL UNIQUE,
-  granted_by                INT          NULL,      -- the admin who gave it
-  note                      VARCHAR(255) NULL,
-  cancelled_at              DATETIME     NULL,
-  created_at                DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id                   INT AUTO_INCREMENT PRIMARY KEY,
+  user_id              INT          NOT NULL,
+  plan_id              INT          NOT NULL,
+  price_id             INT          NULL,          -- NULL for an admin grant
+  source               ENUM('prepaid','auto_renew','admin_grant') NOT NULL,
+  status               ENUM('pending','active','past_due','cancelled') NOT NULL DEFAULT 'pending',
+  starts_at            DATETIME     NULL,
+  ends_at              DATETIME     NULL,
+  auto_renew           TINYINT(1)   NOT NULL DEFAULT 0,
+  provider_session_id  VARCHAR(64)  NULL,          -- auto-renew: Xendit payment session
+  provider_plan_id     VARCHAR(64)  NULL UNIQUE,   -- auto-renew: Xendit recurring plan
+  granted_by           INT          NULL,          -- the admin who gave it
+  note                 VARCHAR(255) NULL,
+  cancelled_at         DATETIME     NULL,
+  created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_subscriptions_user (user_id, ends_at),
   CONSTRAINT fk_subscriptions_user    FOREIGN KEY (user_id)    REFERENCES users(id) ON DELETE CASCADE,
   CONSTRAINT fk_subscriptions_plan    FOREIGN KEY (plan_id)    REFERENCES plans(id),
@@ -66,19 +66,18 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   CONSTRAINT fk_subscriptions_granter FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
 );
 
--- Every payment attempt and its result. Only PayMongo's webhook marks a
--- payment as paid.
+-- Every payment and its result. Only Xendit (its webhook, or the session
+-- status the server checks itself) marks a payment as paid.
 CREATE TABLE IF NOT EXISTS payments (
   id                   INT AUTO_INCREMENT PRIMARY KEY,
   user_id              INT          NOT NULL,
   price_id             INT          NOT NULL,
   subscription_id      INT          NULL,
-  checkout_session_id  VARCHAR(64)  NULL UNIQUE,   -- prepaid (PayMongo Checkout)
-  payment_intent_id    VARCHAR(64)  NULL,          -- first auto-renew payment
-  invoice_id           VARCHAR(64)  NULL UNIQUE,   -- auto-renew invoices
+  session_id           VARCHAR(64)  NULL UNIQUE,   -- Xendit payment session
+  cycle_id             VARCHAR(64)  NULL UNIQUE,   -- Xendit recurring cycle (auto-renew)
   amount_centavos      INT          NOT NULL,
-  status               ENUM('pending','paid','failed') NOT NULL DEFAULT 'pending',
-  livemode             TINYINT(1)   NOT NULL DEFAULT 0,
+  status               ENUM('pending','paid','failed','expired') NOT NULL DEFAULT 'pending',
+  test_mode            TINYINT(1)   NOT NULL DEFAULT 1,
   paid_at              DATETIME     NULL,
   created_at           DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_payments_user (user_id, created_at),
@@ -87,9 +86,9 @@ CREATE TABLE IF NOT EXISTS payments (
   CONSTRAINT fk_payments_subscription FOREIGN KEY (subscription_id) REFERENCES subscriptions(id) ON DELETE SET NULL
 );
 
--- Webhook events already handled, so a repeated delivery changes nothing.
-CREATE TABLE IF NOT EXISTS paymongo_events (
-  event_id     VARCHAR(64)  PRIMARY KEY,
+-- Webhook deliveries already handled, so a repeated delivery changes nothing.
+CREATE TABLE IF NOT EXISTS payment_events (
+  event_key    CHAR(64)     PRIMARY KEY,           -- SHA-256 of the delivery
   event_type   VARCHAR(80)  NOT NULL,
   received_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
