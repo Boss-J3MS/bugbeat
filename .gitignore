@@ -10,11 +10,6 @@ node_modules/
 **/*.env
 !.env.example
 
-# Stray local export folder — has held a raw copy of real .env secrets before;
-# never intended to be part of the repo
-Claude outputs/
-/Claude outputs/
-
 # Python
 __pycache__/
 **/__pycache__/
