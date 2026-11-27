@@ -94,6 +94,7 @@ def health():
     }
 
 # ── POST /complexity ───────────────────────────
+# Scores the code's defect risk using the ML ensemble, CodeBERT and complexity metrics.
 @app.post('/complexity')
 async def analyze_complexity(req: ComplexityRequest):
     if not req.code or not req.code.strip():

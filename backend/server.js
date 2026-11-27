@@ -243,6 +243,7 @@ app.post('/complexity', async (req, res) => {
 });
 
 // ── POST /analyze ──────────────────────────────
+// Finds the errors in the submitted code, line by line, with suggested fixes.
 app.post('/analyze', async (req, res) => {
   const { code, lang = 'auto' } = req.body;
   if (!code?.trim()) return res.status(400).json({ error: 'Missing or empty "code" field.' });
@@ -769,6 +770,8 @@ const loginEmailLimiter = rateLimit({
   message: { error: 'Too many failed attempts for this account. Please wait 15 minutes, or reset your password.' },
 });
 
+// ── POST /auth/login ───────────────────────────
+// Checks the email and password and starts a login session.
 app.post('/auth/login', authLimiter, loginEmailLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -2232,6 +2235,7 @@ const executeLimiter = rateLimit({
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 // ── POST /execute ───────────────────────────────
+// Runs the user's code through paiza.io and returns the output.
 app.post('/execute', requireAuth, executeLimiter, async (req, res) => {
   let   code  = String(req.body?.code  || '');
   const lang  = String(req.body?.lang  || '');

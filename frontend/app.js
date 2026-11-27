@@ -854,6 +854,7 @@ function resetAudioFx() {
   audioSource.playbackRate.value = trackSpeed();
 }
 
+// Builds the distortion applied to uploaded tracks on lines with errors.
 function makeDistortionCurve(amount) {
   const n = 256, curve = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -1264,6 +1265,7 @@ function stopLoop() {
   toneLoop = null; chordIndex = 0;
 }
 
+// Changes how a beat sounds (distortion and pitch) based on its line's severity.
 function applyFx(severity) {
   const fx    = SEVERITY_FX[severity] || SEVERITY_FX.clean;
   const level = errorSoundLevel();
@@ -1287,6 +1289,7 @@ function resetFx() {
   resetAudioFx();
 }
 
+// Adds extra notes to a beat whose line has a warning, error or critical issue.
 function accentBeat(severity) {
   if (!synthsReady || severity === 'clean') return;
   const style = getStyle();
@@ -2246,6 +2249,7 @@ function showWaveInfo(beat, { scroll = false, fromHover = false } = {}) {
   }
 }
 
+// Draws the rhythm waveform: one colored bar per line of code.
 function renderSequencer(lines) {
   sequencer.innerHTML = '';
   const wave = document.createElement('div');

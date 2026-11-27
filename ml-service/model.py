@@ -159,6 +159,7 @@ class EnsembleModel:
 # Singleton instance
 _model = None
 
+# Returns the Random Forest + Neural Network ensemble, loading it only once.
 def get_model() -> EnsembleModel:
     global _model
     if _model is None:
